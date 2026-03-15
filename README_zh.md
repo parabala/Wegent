@@ -360,6 +360,13 @@ docker compose up -d     # 启动
         </a>
     </td>
     <td align="center">
+        <a href="https://github.com/haosenwang1018">
+            <img src="https://avatars.githubusercontent.com/u/167664334?v=4" width="80;" alt="haosenwang1018"/>
+            <br />
+            <sub><b>Sense_wang</b></sub>
+        </a>
+    </td>
+    <td align="center">
         <a href="https://github.com/jolestar">
             <img src="https://avatars.githubusercontent.com/u/77268?v=4" width="80;" alt="jolestar"/>
             <br />
@@ -393,20 +400,13 @@ docker compose up -d     # 启动
             <br />
             <sub><b>Li Daiyan</b></sub>
         </a>
-    </td>
+    </td></tr>
+<tr>
     <td align="center">
         <a href="https://github.com/RichardoMrMu">
             <img src="https://avatars.githubusercontent.com/u/44485717?v=4" width="80;" alt="RichardoMrMu"/>
             <br />
             <sub><b>RichardoMu</b></sub>
-        </a>
-    </td></tr>
-<tr>
-    <td align="center">
-        <a href="https://github.com/haosenwang1018">
-            <img src="https://avatars.githubusercontent.com/u/167664334?v=4" width="80;" alt="haosenwang1018"/>
-            <br />
-            <sub><b>Sense_wang</b></sub>
         </a>
     </td>
     <td align="center">
