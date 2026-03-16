@@ -818,6 +818,41 @@ class KnowledgeService:
         )
 
     @staticmethod
+    def get_active_document_counts(
+        db: Session,
+        knowledge_base_ids: list[int],
+    ) -> dict[int, int]:
+        """
+        Get active document counts for multiple knowledge bases in a single query.
+
+        Args:
+            db: Database session
+            knowledge_base_ids: List of knowledge base IDs
+
+        Returns:
+            Dict mapping kb_id -> active document count
+        """
+        from sqlalchemy import func
+
+        if not knowledge_base_ids:
+            return {}
+
+        results = (
+            db.query(
+                KnowledgeDocument.kind_id,
+                func.count(KnowledgeDocument.id).label("count"),
+            )
+            .filter(
+                KnowledgeDocument.kind_id.in_(knowledge_base_ids),
+                KnowledgeDocument.is_active == True,
+            )
+            .group_by(KnowledgeDocument.kind_id)
+            .all()
+        )
+
+        return {kb_id: count for kb_id, count in results}
+
+    @staticmethod
     def get_active_document_text_length_stats(
         db: Session,
         knowledge_base_id: int,
@@ -1576,16 +1611,20 @@ class KnowledgeService:
                 .all()
             )
 
-        # Build response lists
+        # Batch fetch document counts for all KBs to avoid N+1 queries
+        all_kb_ids = [kb.id for kb in created_kbs] + [kb.id for kb in shared_kbs]
+        document_counts = KnowledgeService.get_active_document_counts(db, all_kb_ids)
+
+        # Build response lists using batched counts
         created_by_me = []
         for kb in created_kbs:
-            document_count = KnowledgeService.get_active_document_count(db, kb.id)
+            document_count = document_counts.get(kb.id, 0)
             kb_response = KnowledgeBaseResponse.from_kind(kb, document_count)
             created_by_me.append(kb_response)
 
         shared_with_me = []
         for kb in shared_kbs:
-            document_count = KnowledgeService.get_active_document_count(db, kb.id)
+            document_count = document_counts.get(kb.id, 0)
             kb_response = KnowledgeBaseResponse.from_kind(kb, document_count)
             shared_with_me.append(kb_response)
 

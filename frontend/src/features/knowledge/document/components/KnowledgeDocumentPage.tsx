@@ -380,6 +380,15 @@ export function KnowledgeDocumentPage() {
             onDeleteKb={setDeletingKb}
             onShareKb={setSharingKb}
             onCreateKb={kbType => handleCreateKb(null, kbType)}
+            onRefreshRef={ref => {
+              // Store the child component's refresh function
+              if (ref) {
+                // Wrap the sync refresh to match the expected Promise<void> return type
+                personalKb.refresh = async () => {
+                  await ref()
+                }
+              }
+            }}
           />
         )}
 
@@ -536,6 +545,7 @@ interface PersonalKnowledgeContentProps {
   onDeleteKb: (kb: KnowledgeBase) => void
   onShareKb: (kb: KnowledgeBase) => void
   onCreateKb: (kbType: KnowledgeBaseType) => void
+  onRefreshRef?: (refresh: (() => void) | null) => void
 }
 
 function PersonalKnowledgeContent({
@@ -544,9 +554,18 @@ function PersonalKnowledgeContent({
   onDeleteKb,
   onShareKb,
   onCreateKb,
+  onRefreshRef,
 }: PersonalKnowledgeContentProps) {
   const { t } = useTranslation()
-  const { data, loading, refresh: _refresh } = usePersonalKnowledgeBasesGrouped()
+  const { data, loading, refresh } = usePersonalKnowledgeBasesGrouped()
+
+  // Expose refresh function to parent via callback ref
+  useEffect(() => {
+    onRefreshRef?.(refresh)
+    return () => {
+      onRefreshRef?.(null)
+    }
+  }, [refresh, onRefreshRef])
   const [searchQuery, setSearchQuery] = useState('')
 
   const createdByMe = data?.created_by_me || []
