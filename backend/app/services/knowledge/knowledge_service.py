@@ -27,6 +27,7 @@ from app.schemas.knowledge import (
     AccessibleKnowledgeResponse,
     BatchOperationResult,
     KnowledgeBaseCreate,
+    KnowledgeBaseResponse,
     KnowledgeBaseUpdate,
     KnowledgeDocumentCreate,
     KnowledgeDocumentUpdate,
@@ -1512,6 +1513,86 @@ class KnowledgeService:
                 )
 
         return AccessibleKnowledgeResponse(personal=personal, team=team_groups)
+
+    @staticmethod
+    def get_personal_knowledge_bases_grouped(
+        db: Session,
+        user_id: int,
+    ) -> dict:
+        """
+        Get personal knowledge bases grouped by ownership.
+
+        Groups knowledge bases into:
+        - created_by_me: Knowledge bases created by the current user (namespace=default)
+        - shared_with_me: Knowledge bases shared with the current user (via ResourceMember, any namespace)
+
+        Args:
+            db: Database session
+            user_id: Current user ID
+
+        Returns:
+            Dict with 'created_by_me' and 'shared_with_me' lists
+        """
+        from app.models.resource_member import MemberStatus, ResourceMember
+        from app.models.share_link import ResourceType
+
+        # Get KBs created by user (personal knowledge bases, namespace=default)
+        created_kbs = (
+            db.query(Kind)
+            .filter(
+                Kind.kind == "KnowledgeBase",
+                Kind.is_active == True,
+                Kind.namespace == "default",
+                Kind.user_id == user_id,
+            )
+            .order_by(Kind.updated_at.desc())
+            .all()
+        )
+
+        # Get KB IDs that are shared with the user via ResourceMember
+        shared_kb_ids = (
+            db.query(ResourceMember.resource_id)
+            .filter(
+                ResourceMember.resource_type == ResourceType.KNOWLEDGE_BASE.value,
+                ResourceMember.user_id == user_id,
+                ResourceMember.status == MemberStatus.APPROVED.value,
+            )
+            .all()
+        )
+        shared_kb_ids = [p[0] for p in shared_kb_ids]
+
+        # Query shared KBs (any namespace, but not created by current user)
+        shared_kbs = []
+        if shared_kb_ids:
+            shared_kbs = (
+                db.query(Kind)
+                .filter(
+                    Kind.kind == "KnowledgeBase",
+                    Kind.is_active == True,
+                    Kind.id.in_(shared_kb_ids),
+                    Kind.user_id != user_id,  # Exclude KBs created by current user
+                )
+                .order_by(Kind.updated_at.desc())
+                .all()
+            )
+
+        # Build response lists
+        created_by_me = []
+        for kb in created_kbs:
+            document_count = KnowledgeService.get_active_document_count(db, kb.id)
+            kb_response = KnowledgeBaseResponse.from_kind(kb, document_count)
+            created_by_me.append(kb_response)
+
+        shared_with_me = []
+        for kb in shared_kbs:
+            document_count = KnowledgeService.get_active_document_count(db, kb.id)
+            kb_response = KnowledgeBaseResponse.from_kind(kb, document_count)
+            shared_with_me.append(kb_response)
+
+        return {
+            "created_by_me": created_by_me,
+            "shared_with_me": shared_with_me,
+        }
 
     @staticmethod
     def can_manage_knowledge_base(
