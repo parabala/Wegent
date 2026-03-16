@@ -304,14 +304,16 @@ export function GroupMembersDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Owner">
-                      <div className="flex flex-col">
-                        <span>{t('groups:groups.roles.Owner')}</span>
-                        <span className="text-xs text-text-muted">
-                          {t('groups:groupMembers.roleDescriptions.Owner')}
-                        </span>
-                      </div>
-                    </SelectItem>
+                    {myRole === 'Owner' && (
+                      <SelectItem value="Owner">
+                        <div className="flex flex-col">
+                          <span>{t('groups:groups.roles.Owner')}</span>
+                          <span className="text-xs text-text-muted">
+                            {t('groups:groupMembers.roleDescriptions.Owner')}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    )}
                     <SelectItem value="Maintainer">
                       <div className="flex flex-col">
                         <span>{t('groups:groups.roles.Maintainer')}</span>
@@ -405,7 +407,7 @@ export function GroupMembersDialog({
                 )}
                 {selectedRole === 'RestrictedAnalyst' && (
                   <div>
-                    <strong>Restricted Analyst：</strong>
+                    <strong>{t('groups:groups.roles.RestrictedAnalyst')}：</strong>
                     {t('groups:groupMembers.roleDescriptions.RestrictedAnalyst')}
                   </div>
                 )}

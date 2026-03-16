@@ -174,6 +174,22 @@ def process_selected_documents_contexts(
         )
         return message, base_system_prompt, extra_tools
 
+    # Resolve KnowledgeDocument rows to get their knowledge_base_id values
+    # This ensures we check access for all KBs that contain the selected documents
+    documents = (
+        db.query(KnowledgeDocument)
+        .filter(KnowledgeDocument.id.in_(all_document_ids))
+        .all()
+    )
+    # Collect knowledge_base_ids from the actual KnowledgeDocument rows
+    resolved_kb_ids = {doc.kind_id for doc in documents if doc.kind_id}
+    if resolved_kb_ids:
+        knowledge_base_ids = knowledge_base_ids.union(resolved_kb_ids)
+        logger.info(
+            f"[process_selected_documents_contexts] Resolved KB IDs from documents: {resolved_kb_ids}, "
+            f"total KB IDs to check: {knowledge_base_ids}"
+        )
+
     # Check if user is a Restricted Analyst for any of the knowledge bases
     has_access, denial_reason = _check_user_kb_access_for_selected_docs(
         db, user_id, knowledge_base_ids
@@ -182,17 +198,15 @@ def process_selected_documents_contexts(
     if not has_access:
         logger.warning(
             f"[process_selected_documents_contexts] User {user_id} is Restricted Analyst, "
-            f"blocking access to selected documents from KBs: {knowledge_base_ids}"
+            f"blocking access to selected documents from KBs: {knowledge_base_ids}, "
+            f"reason: {denial_reason}"
         )
         # Return message unchanged, but add a note to the system prompt
         # Don't add any tools or document content
-        restricted_prompt = (
-            f"{base_system_prompt}\n\n"
-            f"[SYSTEM NOTE: User selected documents from a knowledge base, "
-            f"but access was denied: {denial_reason}]"
-        )
+        from shared.prompts import KB_PROMPT_RESTRICTED_ANALYST
+
+        restricted_prompt = f"{base_system_prompt}\n\n{KB_PROMPT_RESTRICTED_ANALYST.format(reason=denial_reason)}"
         return message, restricted_prompt, extra_tools
-        return message, base_system_prompt, extra_tools
 
     logger.info(
         f"[process_selected_documents_contexts] Processing {len(all_document_ids)} documents "

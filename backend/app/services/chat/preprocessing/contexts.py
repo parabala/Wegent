@@ -1043,6 +1043,9 @@ async def _process_attachment_contexts_for_message(
         )
         return f"{combined_contents}[User Question]:\n{message}"
 
+    # Return original message if no attachment contents were processed
+    return message
+
 
 def _check_user_kb_access(
     db: Session,
@@ -1076,7 +1079,7 @@ def _check_user_kb_access(
         .filter(
             Kind.id.in_(knowledge_base_ids),
             Kind.kind == "KnowledgeBase",
-            Kind.is_active == True,
+            Kind.is_active,
         )
         .all()
     )
@@ -1147,12 +1150,13 @@ def _prepare_kb_tools_from_contexts(
 
     # Check if user is a Restricted Analyst for any of the knowledge bases
     # If so, block access to all KB content
-    has_access, denial_reason = _check_user_kb_access(db, user_id, knowledge_base_ids)
+    has_access, _denial_reason = _check_user_kb_access(db, user_id, knowledge_base_ids)
 
     if not has_access:
         logger.warning(
             f"[_prepare_kb_tools_from_contexts] User {user_id} is Restricted Analyst, "
-            f"blocking access to knowledge bases: {knowledge_base_ids}"
+            f"blocking access to knowledge bases: {knowledge_base_ids}, "
+            f"reason: {_denial_reason}"
         )
         # Return result with no tools and restricted analyst prompt
         return KnowledgeBaseToolsResult(

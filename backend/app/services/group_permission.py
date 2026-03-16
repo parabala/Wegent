@@ -11,7 +11,6 @@ from app.schemas.namespace import GroupRole
 from app.services.group_member_helper import (
     NAMESPACE_RESOURCE_TYPE,
     get_user_groups_with_roles,
-    get_user_role_in_group,
 )
 
 
@@ -48,7 +47,7 @@ def check_group_permission(
     """
     Check if user has required permission level in a group.
 
-    Permission hierarchy: Owner > Maintainer > Developer > Reporter
+    Permission hierarchy: Owner > Maintainer > Developer > Reporter > RestrictedAnalyst
     A user with a higher role can perform actions of lower roles.
 
     Args:
@@ -169,7 +168,7 @@ def check_user_group_permission(
     Check if user has required permission level in a group.
     This is a standalone function that manages its own DB session.
 
-    Permission hierarchy: Owner > Maintainer > Developer > Reporter
+    Permission hierarchy: Owner > Maintainer > Developer > Reporter > RestrictedAnalyst
     A user with a higher role can perform actions of lower roles.
 
     Args:
@@ -208,7 +207,7 @@ def is_restricted_analyst(db: Session, user_id: int, group_name: str) -> bool:
     Returns:
         True if user is a Restricted Analyst in the group, False otherwise
     """
-    user_role = get_user_role_in_group(db, user_id, group_name)
+    user_role = get_effective_role_in_group(db, user_id, group_name)
     return user_role == GroupRole.RestrictedAnalyst
 
 

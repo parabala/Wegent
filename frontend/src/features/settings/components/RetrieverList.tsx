@@ -118,9 +118,19 @@ const RetrieverList: React.FC<RetrieverListProps> = ({
     return role === 'Owner' || role === 'Maintainer'
   }
 
-  const canCreateInAnyGroup =
-    groupRoleMap &&
-    Array.from(groupRoleMap.values()).some(role => role === 'Owner' || role === 'Maintainer')
+  // Check if user can create in the current group (when scope is 'group')
+  const canCreateInGroup = (targetGroupName: string | undefined): boolean => {
+    if (!targetGroupName || !groupRoleMap) return false
+    const role = groupRoleMap.get(targetGroupName)
+    return role === 'Owner' || role === 'Maintainer'
+  }
+
+  // For group scope, check specific group; otherwise check any group
+  const canCreateInCurrentContext =
+    scope === 'group'
+      ? canCreateInGroup(groupName)
+      : groupRoleMap &&
+        Array.from(groupRoleMap.values()).some(role => role === 'Owner' || role === 'Maintainer')
 
   const handleTestConnection = async (retriever: UnifiedRetriever) => {
     setTestingRetrieverName(retriever.name)
@@ -422,7 +432,7 @@ const RetrieverList: React.FC<RetrieverListProps> = ({
         )}
 
         {/* Add Button */}
-        {!loading && (scope === 'personal' || canCreateInAnyGroup) && (
+        {!loading && (scope === 'personal' || canCreateInCurrentContext) && (
           <div className="border-t border-border pt-3 mt-3 bg-base">
             <div className="flex justify-center">
               <UnifiedAddButton onClick={handleCreate}>
