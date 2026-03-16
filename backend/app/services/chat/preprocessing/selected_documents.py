@@ -62,6 +62,61 @@ The search will automatically filter to only the selected documents.
 """
 
 
+def _check_user_kb_access_for_selected_docs(
+    db: Session,
+    user_id: int,
+    knowledge_base_ids: set[int],
+) -> tuple[bool, str]:
+    """Check if user has access to knowledge base content for selected documents.
+
+    For Restricted Analysts in a group, they cannot access document content
+    even if the documents are in a knowledge base they belong to.
+
+    Args:
+        db: Database session
+        user_id: User ID
+        knowledge_base_ids: Set of knowledge base IDs to check
+
+    Returns:
+        Tuple of (has_access, reason)
+        - has_access: True if user can access document content
+        - reason: Explanation if access is denied
+    """
+    from app.models.kind import Kind
+    from app.services.group_permission import is_restricted_analyst
+
+    if not knowledge_base_ids:
+        return True, ""
+
+    # Get knowledge bases to check their namespaces
+    kbs = (
+        db.query(Kind)
+        .filter(
+            Kind.id.in_(list(knowledge_base_ids)),
+            Kind.kind == "KnowledgeBase",
+            Kind.is_active == True,
+        )
+        .all()
+    )
+
+    for kb in kbs:
+        # Personal knowledge bases (namespace='default') are always accessible
+        if kb.namespace == "default":
+            continue
+
+        # Check if user is a Restricted Analyst in this group
+        if is_restricted_analyst(db, user_id, kb.namespace):
+            return (
+                False,
+                f"You have Restricted Analyst permissions in group '{kb.namespace}'. "
+                "You cannot access document content from this knowledge base. "
+                "Please contact a group Owner, Maintainer, or Developer "
+                "if you need information from these documents.",
+            )
+
+    return True, ""
+
+
 def process_selected_documents_contexts(
     db: Session,
     selected_docs_contexts: List[SubtaskContext],
@@ -117,6 +172,26 @@ def process_selected_documents_contexts(
         logger.info(
             "[process_selected_documents_contexts] No document IDs found in contexts"
         )
+        return message, base_system_prompt, extra_tools
+
+    # Check if user is a Restricted Analyst for any of the knowledge bases
+    has_access, denial_reason = _check_user_kb_access_for_selected_docs(
+        db, user_id, knowledge_base_ids
+    )
+
+    if not has_access:
+        logger.warning(
+            f"[process_selected_documents_contexts] User {user_id} is Restricted Analyst, "
+            f"blocking access to selected documents from KBs: {knowledge_base_ids}"
+        )
+        # Return message unchanged, but add a note to the system prompt
+        # Don't add any tools or document content
+        restricted_prompt = (
+            f"{base_system_prompt}\n\n"
+            f"[SYSTEM NOTE: User selected documents from a knowledge base, "
+            f"but access was denied: {denial_reason}]"
+        )
+        return message, restricted_prompt, extra_tools
         return message, base_system_prompt, extra_tools
 
     logger.info(

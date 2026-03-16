@@ -66,6 +66,7 @@ def check_group_permission(
         GroupRole.Maintainer: 1,
         GroupRole.Developer: 2,
         GroupRole.Reporter: 3,
+        GroupRole.RestrictedAnalyst: 4,
     }
 
     user_role = get_user_role_in_group(db, user_id, group_name)
@@ -189,3 +190,61 @@ def check_user_group_permission(
 
     with SessionLocal() as db:
         return check_group_permission(db, user_id, group_name, required_role)
+
+
+def is_restricted_analyst(db: Session, user_id: int, group_name: str) -> bool:
+    """
+    Check if user is a Restricted Analyst in the specified group.
+
+    Restricted Analysts have limited access to knowledge base content.
+    They can view conversations but cannot access document content,
+    document structure, or summaries.
+
+    Args:
+        db: Database session
+        user_id: User ID
+        group_name: Group name (namespace)
+
+    Returns:
+        True if user is a Restricted Analyst in the group, False otherwise
+    """
+    user_role = get_user_role_in_group(db, user_id, group_name)
+    return user_role == GroupRole.RestrictedAnalyst
+
+
+def check_knowledge_base_access_for_restricted_analyst(
+    db: Session,
+    user_id: int,
+    knowledge_base_namespace: str,
+) -> tuple[bool, str]:
+    """
+    Check if a user can access knowledge base content.
+
+    For Restricted Analysts in a group, they cannot access knowledge base content
+    even if the KB is in a group they belong to. This prevents them from
+    extracting document content through conversation.
+
+    Args:
+        db: Database session
+        user_id: User ID
+        knowledge_base_namespace: Knowledge base namespace (group name or 'default')
+
+    Returns:
+        Tuple of (has_access, reason)
+        - has_access: True if user can access KB content
+        - reason: Explanation if access is denied
+    """
+    # Personal knowledge bases (namespace='default') are always accessible
+    if knowledge_base_namespace == "default":
+        return True, ""
+
+    # Check if user is a Restricted Analyst in this group
+    if is_restricted_analyst(db, user_id, knowledge_base_namespace):
+        return (
+            False,
+            "Restricted Analysts cannot access knowledge base content. "
+            "You can view conversations but cannot retrieve document content, "
+            "structure, or summaries from group knowledge bases.",
+        )
+
+    return True, ""

@@ -755,6 +755,7 @@ class KnowledgeBaseTool(KnowledgeBaseToolABC, BaseTool):
                         db=self.db_session,
                         max_chunks=10000,
                         query=query,
+                        user_id=self.user_id,
                     )
 
                     logger.info(
