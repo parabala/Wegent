@@ -613,10 +613,6 @@ class AllChunksRequest(BaseModel):
         default=None,
         description="Optional query string for logging purposes",
     )
-    user_id: Optional[int] = Field(
-        default=None,
-        description="User ID for access control (Restricted Analyst check)",
-    )
 
 
 class ChunkInfo(BaseModel):
@@ -662,14 +658,13 @@ async def get_all_chunks(
         retrieval_service = RetrievalService()
 
         # Use authenticated user's ID for Restricted Analyst check
-        user_id = request.user_id or current_user.id
-
+        # Do NOT trust request.user_id - always use current_user.id
         chunks = await retrieval_service.get_all_chunks_from_knowledge_base(
             knowledge_base_id=request.knowledge_base_id,
             db=db,
             max_chunks=request.max_chunks,
             query=request.query,
-            user_id=user_id,
+            user_id=current_user.id,
         )
 
         # Calculate total content size for logging

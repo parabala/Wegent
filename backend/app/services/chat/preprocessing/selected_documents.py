@@ -82,39 +82,13 @@ def _check_user_kb_access_for_selected_docs(
         - has_access: True if user can access document content
         - reason: Explanation if access is denied
     """
-    from app.models.kind import Kind
-    from app.services.group_permission import is_restricted_analyst
-
-    if not knowledge_base_ids:
-        return True, ""
-
-    # Get knowledge bases to check their namespaces
-    kbs = (
-        db.query(Kind)
-        .filter(
-            Kind.id.in_(list(knowledge_base_ids)),
-            Kind.kind == "KnowledgeBase",
-            Kind.is_active == True,
-        )
-        .all()
+    from app.services.group_permission import (
+        check_knowledge_base_access_for_restricted_analyst_by_ids,
     )
 
-    for kb in kbs:
-        # Personal knowledge bases (namespace='default') are always accessible
-        if kb.namespace == "default":
-            continue
-
-        # Check if user is a Restricted Analyst in this group
-        if is_restricted_analyst(db, user_id, kb.namespace):
-            return (
-                False,
-                f"You have Restricted Analyst permissions in group '{kb.namespace}'. "
-                "You cannot access document content from this knowledge base. "
-                "Please contact a group Owner, Maintainer, or Developer "
-                "if you need information from these documents.",
-            )
-
-    return True, ""
+    return check_knowledge_base_access_for_restricted_analyst_by_ids(
+        db, user_id, list(knowledge_base_ids)
+    )
 
 
 def process_selected_documents_contexts(

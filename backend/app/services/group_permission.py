@@ -247,3 +247,56 @@ def check_knowledge_base_access_for_restricted_analyst(
         )
 
     return True, ""
+
+
+def check_knowledge_base_access_for_restricted_analyst_by_ids(
+    db: Session,
+    user_id: int,
+    knowledge_base_ids: list[int],
+) -> tuple[bool, str]:
+    """
+    Check if a user can access knowledge base content by KB IDs.
+
+    For Restricted Analysts in a group, they cannot access knowledge base content
+    even if the KB is in a group they belong to. This prevents them from
+    extracting document content through conversation.
+
+    Args:
+        db: Database session
+        user_id: User ID
+        knowledge_base_ids: List of knowledge base IDs to check
+
+    Returns:
+        Tuple of (has_access, reason)
+        - has_access: True if user can access KB content
+        - reason: Explanation if access is denied
+    """
+    from app.models.kind import Kind
+
+    if not knowledge_base_ids:
+        return True, ""
+
+    # Get knowledge bases to check their namespaces
+    kbs = (
+        db.query(Kind)
+        .filter(
+            Kind.id.in_(knowledge_base_ids),
+            Kind.kind == "KnowledgeBase",
+            Kind.is_active,
+        )
+        .all()
+    )
+
+    for kb in kbs:
+        # Personal knowledge bases (namespace='default') are always accessible
+        if kb.namespace == "default":
+            continue
+
+        # Check if user is a Restricted Analyst in this group
+        has_access, reason = check_knowledge_base_access_for_restricted_analyst(
+            db, user_id, kb.namespace
+        )
+        if not has_access:
+            return has_access, reason
+
+    return True, ""
