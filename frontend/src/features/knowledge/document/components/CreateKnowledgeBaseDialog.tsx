@@ -4,8 +4,8 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
-import { BookOpen, FolderOpen } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { BookOpen, FolderOpen, Users } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -17,7 +17,16 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useTranslation } from '@/hooks/useTranslation'
 import type { SummaryModelRef, KnowledgeBaseType, RetrievalConfig } from '@/types/knowledge'
+import type { Group } from '@/types/group'
 import { KnowledgeBaseForm } from './KnowledgeBaseForm'
+import { knowledgeBaseApi } from '@/apis/knowledge-base'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface CreateKnowledgeBaseDialogProps {
   open: boolean
@@ -30,6 +39,7 @@ interface CreateKnowledgeBaseDialogProps {
     summary_model_ref?: SummaryModelRef | null
     max_calls_per_conversation: number
     exempt_calls_before_check: number
+    linked_group?: string | null
   }) => Promise<void>
   loading?: boolean
   scope?: 'personal' | 'group' | 'organization' | 'all'
@@ -38,6 +48,10 @@ interface CreateKnowledgeBaseDialogProps {
   kbType?: KnowledgeBaseType
   /** Optional team ID for reading cached model preference */
   knowledgeDefaultTeamId?: number | null
+  /** Whether to show group selector (for personal/organization scope) */
+  showGroupSelector?: boolean
+  /** Pre-selected group name (when creating from group page) */
+  preSelectedGroup?: string | null
 }
 
 export function CreateKnowledgeBaseDialog({
@@ -49,8 +63,10 @@ export function CreateKnowledgeBaseDialog({
   groupName,
   kbType = 'notebook',
   knowledgeDefaultTeamId,
+  showGroupSelector = false,
+  preSelectedGroup = null,
 }: CreateKnowledgeBaseDialogProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation('knowledge')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   // Default enable summary for notebook type, disable for classic type
@@ -71,6 +87,36 @@ export function CreateKnowledgeBaseDialog({
   const [maxCalls, setMaxCalls] = useState(10)
   const [exemptCalls, setExemptCalls] = useState(5)
 
+  // Group selector state
+  const [manageableGroups, setManageableGroups] = useState<Group[]>([])
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(preSelectedGroup)
+  const [loadingGroups, setLoadingGroups] = useState(false)
+
+  // Load manageable groups function
+  const loadManageableGroups = useCallback(async () => {
+    setLoadingGroups(true)
+    try {
+      const response = await knowledgeBaseApi.getManageableGroups()
+      setManageableGroups(response.items || [])
+    } catch (err) {
+      console.error('Failed to load manageable groups:', err)
+    } finally {
+      setLoadingGroups(false)
+    }
+  }, [])
+
+  // Load manageable groups when dialog opens and group selector is enabled
+  useEffect(() => {
+    if (open && showGroupSelector) {
+      loadManageableGroups()
+    }
+  }, [open, showGroupSelector, loadManageableGroups])
+
+  // Update selected group when preSelectedGroup changes
+  useEffect(() => {
+    setSelectedGroup(preSelectedGroup)
+  }, [preSelectedGroup])
+
   // Reset summaryEnabled when dialog opens based on kbType
   // This is necessary because useState initial value only applies on first mount,
   // but the dialog component persists and kbType can change between opens
@@ -79,6 +125,23 @@ export function CreateKnowledgeBaseDialog({
       setSummaryEnabled(kbType === 'notebook')
     }
   }, [open, kbType])
+
+  // Auto-generate name when group is selected and name is empty
+  const handleGroupChange = useCallback(
+    (groupNameValue: string | null) => {
+      setSelectedGroup(groupNameValue)
+
+      // Auto-generate default name if name is empty and group is selected
+      if (groupNameValue && !name.trim()) {
+        const group = manageableGroups.find(g => g.name === groupNameValue)
+        if (group) {
+          const groupDisplayName = group.display_name || group.name
+          setName(`${groupDisplayName} ${t('knowledge:document.knowledgeBase.defaultNameSuffix')}`)
+        }
+      }
+    },
+    [name, manageableGroups, t]
+  )
 
   // Note: Auto-selection of retriever and embedding model is handled by RetrievalSettingsSection
 
@@ -113,6 +176,8 @@ export function CreateKnowledgeBaseDialog({
     // AI will use kb_ls/kb_head tools to explore documents instead of RAG search
 
     try {
+      // Convert empty string to null for linked_group
+      const linkedGroupValue = selectedGroup?.trim() || null
       await onSubmit({
         name: name.trim(),
         description: description.trim() || undefined,
@@ -121,10 +186,11 @@ export function CreateKnowledgeBaseDialog({
         summary_model_ref: summaryEnabled ? summaryModelRef : null,
         max_calls_per_conversation: maxCalls,
         exempt_calls_before_check: exemptCalls,
+        linked_group: linkedGroupValue,
       })
+      // Reset form
       setName('')
       setDescription('')
-      // Reset summaryEnabled based on kbType: enabled for notebook, disabled for classic
       setSummaryEnabled(kbType === 'notebook')
       setSummaryModelRef(null)
       setRetrievalConfig({
@@ -138,6 +204,7 @@ export function CreateKnowledgeBaseDialog({
       })
       setMaxCalls(10)
       setExemptCalls(5)
+      setSelectedGroup(preSelectedGroup)
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common:error'))
     }
@@ -147,7 +214,6 @@ export function CreateKnowledgeBaseDialog({
     if (!newOpen) {
       setName('')
       setDescription('')
-      // Reset summaryEnabled based on kbType: enabled for notebook, disabled for classic
       setSummaryEnabled(kbType === 'notebook')
       setSummaryModelRef(null)
       setSummaryModelError('')
@@ -164,6 +230,7 @@ export function CreateKnowledgeBaseDialog({
       setExemptCalls(5)
       setError('')
       setAccordionValue('')
+      setSelectedGroup(preSelectedGroup)
     }
     onOpenChange(newOpen)
   }
@@ -239,7 +306,7 @@ export function CreateKnowledgeBaseDialog({
             }}
             advancedVariant="accordion"
             advancedOpen={accordionValue === 'advanced'}
-            onAdvancedOpenChange={open => setAccordionValue(open ? 'advanced' : '')}
+            onAdvancedOpenChange={openValue => setAccordionValue(openValue ? 'advanced' : '')}
             advancedDescription={t('knowledge:document.advancedSettings.collapsed')}
             showRetrievalSection={true}
             retrievalConfig={retrievalConfig}
@@ -247,6 +314,51 @@ export function CreateKnowledgeBaseDialog({
             retrievalScope={scope}
             retrievalGroupName={groupName}
           />
+
+          {/* Group Selector - only show when enabled */}
+          {showGroupSelector && (
+            <div className="space-y-2">
+              <Label>{t('knowledge:document.knowledgeBase.linkedGroup')}</Label>
+              <Select
+                value={selectedGroup || 'none'}
+                onValueChange={value => handleGroupChange(value === 'none' ? null : value)}
+                disabled={loadingGroups}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue
+                    placeholder={t('knowledge:document.knowledgeBase.selectGroupPlaceholder')}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">
+                    <div className="flex items-center gap-2">
+                      <span>{t('knowledge:document.knowledgeBase.noGroup')}</span>
+                    </div>
+                  </SelectItem>
+                  {manageableGroups.map(group => (
+                    <SelectItem key={group.name} value={group.name}>
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-text-muted" />
+                        <span>{group.display_name || group.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                  {/* Show preSelectedGroup if it's not in manageableGroups */}
+                  {preSelectedGroup && !manageableGroups.find(g => g.name === preSelectedGroup) && (
+                    <SelectItem key={preSelectedGroup} value={preSelectedGroup}>
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-text-muted" />
+                        <span>{preSelectedGroup}</span>
+                      </div>
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-text-muted">
+                {t('knowledge:document.knowledgeBase.linkedGroupHint')}
+              </p>
+            </div>
+          )}
 
           {error && <p className="text-sm text-error">{error}</p>}
         </div>

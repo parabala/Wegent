@@ -56,7 +56,7 @@ export function PermissionManagementTab({ kbId }: PermissionManagementTabProps) 
         const additions: Record<number, MemberRole> = {}
         permissions.pending.forEach(p => {
           if (!(p.id in prev)) {
-            // Use role if available, otherwise fallback to permission_level
+            // Use role for the approval role
             additions[p.id] = p.role || 'Reporter'
           }
         })
@@ -182,9 +182,7 @@ export function PermissionManagementTab({ kbId }: PermissionManagementTabProps) 
                   </div>
                   <div className="text-xs text-text-muted mt-1">
                     {t('document.permission.requesting')}:{' '}
-                    {permission.role
-                      ? t(`document.permission.role.${permission.role}`)
-                      : permission.permission_level || 'view'}
+                    {permission.role ? t(`document.permission.role.${permission.role}`) : 'view'}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

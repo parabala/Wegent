@@ -559,6 +559,8 @@ class KnowledgeOrchestrator:
         Returns:
             KnowledgeBaseListResponse with knowledge base list
         """
+        from app.services.share import knowledge_share_service
+
         try:
             resource_scope = ResourceScope(scope)
         except ValueError:
@@ -571,15 +573,34 @@ class KnowledgeOrchestrator:
             group_name=group_name,
         )
 
-        # Use cached document_count from spec to avoid N+1 query problem
+        # Build response with permission_source for each KB
+        # Build response with permission_source for each KB
+        items = []
+        for kb in knowledge_bases:
+            # Get permission info to determine permission_source
+            has_access, role, is_creator = (
+                knowledge_share_service.get_user_kb_permission(db, kb.id, user.id)
+            )
+
+            # Determine permission_source
+            if is_creator:
+                permission_source = "creator"
+            elif kb.namespace != "default":
+                # namespace contains the group info, no need to check spec.linkedGroup
+                permission_source = "group_namespace"
+            else:
+                permission_source = "explicit"
+
+            items.append(
+                KnowledgeBaseResponse.from_kind(
+                    kb,
+                    kb.json.get("spec", {}).get("document_count", 0),
+                    permission_source=permission_source,
+                )
+            )
         return KnowledgeBaseListResponse(
             total=len(knowledge_bases),
-            items=[
-                KnowledgeBaseResponse.from_kind(
-                    kb, kb.json.get("spec", {}).get("document_count", 0)
-                )
-                for kb in knowledge_bases
-            ],
+            items=items,
         )
 
     def list_documents(
@@ -642,6 +663,8 @@ class KnowledgeOrchestrator:
         Raises:
             ValueError: If knowledge base not found or access denied
         """
+        from app.services.share import knowledge_share_service
+
         knowledge_base = KnowledgeService.get_knowledge_base(
             db=db,
             knowledge_base_id=knowledge_base_id,
@@ -651,8 +674,24 @@ class KnowledgeOrchestrator:
         if not knowledge_base:
             raise ValueError("Knowledge base not found or access denied")
 
+        # Get permission info to determine permission_source
+        has_access, role, is_creator = knowledge_share_service.get_user_kb_permission(
+            db, knowledge_base.id, user.id
+        )
+
+        # Determine permission_source
+        if is_creator:
+            permission_source = "creator"
+        elif knowledge_base.namespace != "default":
+            # namespace contains the group info, no need to check spec.linkedGroup
+            permission_source = "group_namespace"
+        else:
+            permission_source = "explicit"
+
         return KnowledgeBaseResponse.from_kind(
-            knowledge_base, KnowledgeService.get_document_count(db, knowledge_base.id)
+            knowledge_base,
+            KnowledgeService.get_document_count(db, knowledge_base.id),
+            permission_source=permission_source,
         )
 
     def update_knowledge_base(
@@ -706,15 +745,31 @@ class KnowledgeOrchestrator:
         if not knowledge_base:
             raise ValueError("Knowledge base not found or access denied")
 
+        # Get permission info to determine permission_source
+        has_access, role, is_creator = knowledge_share_service.get_user_kb_permission(
+            db, knowledge_base.id, user.id
+        )
+
+        # Determine permission_source
+        if is_creator:
+            permission_source = "creator"
+        elif knowledge_base.namespace != "default":
+            # namespace contains the group info, no need to check spec.linkedGroup
+            permission_source = "group_namespace"
+        else:
+            permission_source = "explicit"
+
         return KnowledgeBaseResponse.from_kind(
-            knowledge_base, KnowledgeService.get_document_count(db, knowledge_base.id)
+            knowledge_base,
+            KnowledgeService.get_document_count(db, knowledge_base.id),
+            permission_source=permission_source,
         )
 
     def create_knowledge_base(
         self,
         db: Session,
         user: User,
-        name: str,
+        name: Optional[str] = None,
         description: Optional[str] = None,
         namespace: str = "default",
         kb_type: str = "notebook",
@@ -729,6 +784,8 @@ class KnowledgeOrchestrator:
         summary_model_ref: Optional[Dict[str, str]] = None,
         # MCP context: for getting task's model as summary_model
         task_id: Optional[int] = None,
+        # Linked group for permission inheritance
+        linked_group: Optional[str] = None,
     ) -> KnowledgeBaseResponse:
         """
         Create a knowledge base with auto-configuration support.
@@ -868,6 +925,7 @@ class KnowledgeOrchestrator:
             retrieval_config=resolved_retrieval_config,
             summary_enabled=summary_enabled,
             summary_model_ref=resolved_summary_model_ref,
+            linked_group=linked_group,
         )
 
         kb_id = KnowledgeService.create_knowledge_base(
@@ -886,8 +944,18 @@ class KnowledgeOrchestrator:
         if not knowledge_base:
             raise ValueError("Failed to retrieve created knowledge base")
 
+        # Determine permission_source for created KB
+        if linked_group:
+            permission_source = "linked_group"
+        elif knowledge_base.namespace != "default":
+            permission_source = "group_namespace"
+        else:
+            permission_source = "creator"
+
         return KnowledgeBaseResponse.from_kind(
-            knowledge_base, KnowledgeService.get_document_count(db, knowledge_base.id)
+            knowledge_base,
+            KnowledgeService.get_document_count(db, knowledge_base.id),
+            permission_source=permission_source,
         )
 
     def create_document_with_content(

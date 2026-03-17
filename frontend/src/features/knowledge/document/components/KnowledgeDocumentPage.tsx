@@ -232,6 +232,7 @@ export function KnowledgeDocumentPage() {
     retrieval_config?: Parameters<typeof personalKb.create>[0]['retrieval_config']
     summary_enabled?: boolean
     summary_model_ref?: Parameters<typeof personalKb.create>[0]['summary_model_ref'] | null
+    linked_group?: string | null
   }) => {
     const kbService = createForOrganization ? organizationKb : personalKb
     // Use fetched organization namespace or fallback to 'organization'
@@ -246,6 +247,7 @@ export function KnowledgeDocumentPage() {
       summary_enabled: data.summary_enabled,
       summary_model_ref: data.summary_model_ref,
       kb_type: createKbType,
+      linked_group: data.linked_group,
     })
     // Save summary model to knowledge team's preference for notebook type
     // This allows the model selector in notebook chat page to pre-select the configured model
@@ -454,6 +456,8 @@ export function KnowledgeDocumentPage() {
         groupName={createForGroup || undefined}
         kbType={createKbType}
         knowledgeDefaultTeamId={knowledgeDefaultTeamId}
+        showGroupSelector={createForOrganization || activeTab === 'group'}
+        preSelectedGroup={createForGroup}
       />
 
       <EditKnowledgeBaseDialog
@@ -801,7 +805,7 @@ interface GroupKnowledgeContentProps {
   onEditKb: (kb: KnowledgeBase) => void
   onDeleteKb: (kb: KnowledgeBase) => void
   onShareKb: (kb: KnowledgeBase) => void
-  onCreateKb: (groupName: string, kbType: KnowledgeBaseType) => void
+  onCreateKb: (groupName: string | null, kbType: KnowledgeBaseType) => void
   onCreateGroupChat: (
     group: Group,
     kbInfo?: { name: string; namespace: string },
@@ -941,6 +945,55 @@ function GroupKnowledgeContent({
       </div>
 
       <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {/* Create knowledge base card - shown when no search query */}
+        {!searchQuery && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Card
+                padding="sm"
+                className="hover:bg-hover transition-colors cursor-pointer flex flex-col items-center justify-center h-[140px]"
+              >
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                  <Plus className="w-6 h-6 text-primary" />
+                </div>
+                <h3 className="font-medium text-sm">
+                  {t('knowledge:document.knowledgeBase.create')}
+                </h3>
+              </Card>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" className="w-56">
+              <DropdownMenuItem
+                onClick={() => onCreateKb(null, 'notebook')}
+                className="flex items-start gap-3 py-3"
+              >
+                <BookOpen className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                <div>
+                  <div className="font-medium">
+                    {t('knowledge:document.knowledgeBase.typeNotebook')}
+                  </div>
+                  <div className="text-xs text-text-muted">
+                    {t('knowledge:document.knowledgeBase.notebookDesc')}
+                  </div>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => onCreateKb(null, 'classic')}
+                className="flex items-start gap-3 py-3"
+              >
+                <FolderOpen className="w-5 h-5 text-text-secondary mt-0.5 flex-shrink-0" />
+                <div>
+                  <div className="font-medium">
+                    {t('knowledge:document.knowledgeBase.typeClassic')}
+                  </div>
+                  <div className="text-xs text-text-muted">
+                    {t('knowledge:document.knowledgeBase.classicDesc')}
+                  </div>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
         {filteredGroups.map(group => {
           const role = group.my_role
           const canChat = role === 'Owner' || role === 'Maintainer' || role === 'Developer'

@@ -4,6 +4,7 @@
 
 import type { KnowledgeBasesResponse, PersonalKnowledgeBaseGroup } from '@/types/api'
 import type { DocumentDetailResponse, KnowledgeBaseSummaryResponse } from '@/types/knowledge'
+import type { GroupListResponse } from '@/types/group'
 import client from './client'
 
 export const knowledgeBaseApi = {
@@ -103,6 +104,16 @@ export const knowledgeBaseApi = {
       document_id: number
       message: string
     }>(`/knowledge-documents/${docId}/content`, { content })
+    return response
+  },
+
+  /**
+   * Get list of groups that the user can manage (for knowledge base creation)
+   * Returns groups where user has Owner or Maintainer role
+   * Note: Developer role can edit but cannot create knowledge bases
+   */
+  getManageableGroups: async (): Promise<GroupListResponse> => {
+    const response = await client.get<GroupListResponse>('/groups?filter=manageable&limit=100')
     return response
   },
 }

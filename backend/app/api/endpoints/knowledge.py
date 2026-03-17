@@ -222,6 +222,7 @@ def create_knowledge_base(
                 data.retrieval_config.model_dump() if data.retrieval_config else None
             ),
             summary_model_ref=data.summary_model_ref,
+            linked_group=data.linked_group,
         )
         add_span_event(
             "knowledge.base.created",

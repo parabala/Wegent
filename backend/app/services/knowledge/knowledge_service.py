@@ -128,8 +128,51 @@ class KnowledgeService:
         """
         from datetime import datetime
 
+        # Handle linked_group logic
+        linked_group = data.linked_group
+        kb_name = data.name
+
+        if linked_group:
+            # Validate linked_group exists
+            from app.models.namespace import Namespace
+
+            group = (
+                db.query(Namespace)
+                .filter(
+                    Namespace.name == linked_group,
+                    Namespace.is_active == True,
+                )
+                .first()
+            )
+            if not group:
+                raise ValueError(f"Linked group '{linked_group}' does not exist")
+
+            # Check user has access to the linked group
+            role = get_effective_role_in_group(db, user_id, linked_group)
+            if role is None:
+                raise ValueError(
+                    f"User does not have access to linked group '{linked_group}'"
+                )
+
+            # When linked_group is set, namespace must match the linked group
+            effective_namespace = linked_group
+
+            # Auto-generate name if not provided
+            if not kb_name:
+                kb_name = KnowledgeService._generate_kb_name_for_group(
+                    db, user_id, linked_group
+                )
+        else:
+            effective_namespace = data.namespace
+
+            # Validate name is provided when no linked_group
+            if not kb_name:
+                raise ValueError(
+                    "Knowledge base name is required when not linking to a group"
+                )
+
         # Check permission for organization-level knowledge base (admin only)
-        if _is_organization_namespace(db, data.namespace):
+        if _is_organization_namespace(db, effective_namespace):
             from app.models.user import User
 
             user = db.query(User).filter(User.id == user_id).first()
@@ -137,21 +180,21 @@ class KnowledgeService:
                 raise ValueError("Only admin can create organization knowledge base")
 
         # Check permission for team knowledge base
-        elif data.namespace != "default":
-            role = get_effective_role_in_group(db, user_id, data.namespace)
+        elif effective_namespace != "default":
+            role = get_effective_role_in_group(db, user_id, effective_namespace)
             if role is None:
                 raise ValueError(
-                    f"User does not have access to group '{data.namespace}'"
+                    f"User does not have access to group '{effective_namespace}'"
                 )
             if not check_group_permission(
-                db, user_id, data.namespace, GroupRole.Maintainer
+                db, user_id, effective_namespace, GroupRole.Maintainer
             ):
                 raise ValueError(
                     "Only Owner or Maintainer can create knowledge base in this group"
                 )
 
         # Generate unique name for the Kind record
-        kb_name = f"kb-{user_id}-{data.namespace}-{data.name}"
+        kind_name = f"kb-{user_id}-{effective_namespace}-{kb_name}"
 
         # Check duplicate by Kind.name (unique identifier)
         existing_by_name = (
@@ -159,15 +202,15 @@ class KnowledgeService:
             .filter(
                 Kind.kind == "KnowledgeBase",
                 Kind.user_id == user_id,
-                Kind.namespace == data.namespace,
-                Kind.name == kb_name,
+                Kind.namespace == effective_namespace,
+                Kind.name == kind_name,
                 Kind.is_active == True,
             )
             .first()
         )
 
         if existing_by_name:
-            raise ValueError(f"Knowledge base with name '{data.name}' already exists")
+            raise ValueError(f"Knowledge base with name '{kb_name}' already exists")
 
         # Also check by display name in spec to prevent duplicates
         existing_by_display = (
@@ -175,7 +218,7 @@ class KnowledgeService:
             .filter(
                 Kind.kind == "KnowledgeBase",
                 Kind.user_id == user_id,
-                Kind.namespace == data.namespace,
+                Kind.namespace == effective_namespace,
                 Kind.is_active == True,
             )
             .all()
@@ -183,14 +226,12 @@ class KnowledgeService:
 
         for kb in existing_by_display:
             kb_spec = kb.json.get("spec", {})
-            if kb_spec.get("name") == data.name:
-                raise ValueError(
-                    f"Knowledge base with name '{data.name}' already exists"
-                )
+            if kb_spec.get("name") == kb_name:
+                raise ValueError(f"Knowledge base with name '{kb_name}' already exists")
 
         # Build CRD structure
         spec_kwargs = {
-            "name": data.name,
+            "name": kb_name,
             "description": data.description or "",
             "kbType": data.kb_type
             or "notebook",  # Default to 'notebook' if not provided
@@ -201,12 +242,15 @@ class KnowledgeService:
         if data.summary_model_ref:
             spec_kwargs["summaryModelRef"] = data.summary_model_ref
 
+        # Note: linkedGroup is not stored in spec because namespace already contains the group info
+        # This avoids redundancy and potential inconsistency
+
         kb_crd = KnowledgeBaseCRD(
             apiVersion="agent.wecode.io/v1",
             kind="KnowledgeBase",
             metadata=ObjectMeta(
-                name=kb_name,
-                namespace=data.namespace,
+                name=kind_name,
+                namespace=effective_namespace,
             ),
             spec=KnowledgeBaseSpec(**spec_kwargs),
         )
@@ -220,8 +264,8 @@ class KnowledgeService:
         db_resource = Kind(
             user_id=user_id,
             kind="KnowledgeBase",
-            name=kb_name,
-            namespace=data.namespace,
+            name=kind_name,
+            namespace=effective_namespace,
             json=resource_data,
             created_at=datetime.now(),
             updated_at=datetime.now(),
@@ -230,7 +274,136 @@ class KnowledgeService:
         db.add(db_resource)
         db.flush()  # Flush to get the ID without committing
 
+        # If linked_group is set, sync group members to knowledge base
+        if linked_group:
+            KnowledgeService._sync_group_members_to_kb(
+                db, linked_group, db_resource.id, user_id
+            )
+
         return db_resource.id
+
+    @staticmethod
+    def _generate_kb_name_for_group(
+        db: Session,
+        user_id: int,
+        group_name: str,
+    ) -> str:
+        """
+        Generate a default knowledge base name based on group name.
+
+        If the default name already exists, appends a sequential number.
+
+        Args:
+            db: Database session
+            user_id: Creator user ID
+            group_name: Name of the linked group
+
+        Returns:
+            Generated unique knowledge base name
+        """
+        from app.models.namespace import Namespace
+
+        # Get group display name if available
+        group = (
+            db.query(Namespace)
+            .filter(
+                Namespace.name == group_name,
+                Namespace.is_active == True,
+            )
+            .first()
+        )
+        group_display_name = group.display_name if group else group_name
+
+        base_name = f"{group_display_name} 知识库"
+
+        # Check if base name exists
+        existing_names = {
+            kb.json.get("spec", {}).get("name", "")
+            for kb in db.query(Kind)
+            .filter(
+                Kind.kind == "KnowledgeBase",
+                Kind.user_id == user_id,
+                Kind.namespace == group_name,
+                Kind.is_active == True,
+            )
+            .all()
+        }
+
+        if base_name not in existing_names:
+            return base_name
+
+        # Find next available number
+        counter = 1
+        while f"{base_name} ({counter})" in existing_names:
+            counter += 1
+
+        return f"{base_name} ({counter})"
+
+    @staticmethod
+    def _sync_group_members_to_kb(
+        db: Session,
+        group_name: str,
+        knowledge_base_id: int,
+        creator_user_id: int,
+    ) -> None:
+        """
+        Sync all group members to knowledge base as ResourceMember.
+
+        When a knowledge base is linked to a group, all group members
+        are granted access to the knowledge base with the same role
+        they have in the group.
+
+        Args:
+            db: Database session
+            group_name: Name of the linked group
+            knowledge_base_id: ID of the knowledge base
+            creator_user_id: ID of the KB creator (excluded from sync)
+        """
+        from app.models.resource_member import MemberStatus, ResourceMember
+        from app.models.share_link import ResourceType
+        from app.services.group_member_helper import get_group_members
+
+        # Get all group members
+        group_members = get_group_members(db, group_name)
+
+        for member in group_members:
+            # Skip the creator (they already have owner access via user_id)
+            if member.user_id == creator_user_id:
+                continue
+
+            # Check if member already exists for this KB
+            existing = (
+                db.query(ResourceMember)
+                .filter(
+                    ResourceMember.resource_type == ResourceType.KNOWLEDGE_BASE.value,
+                    ResourceMember.resource_id == knowledge_base_id,
+                    ResourceMember.user_id == member.user_id,
+                )
+                .first()
+            )
+
+            if existing:
+                # Update existing member's role to match group role
+                existing.role = member.role
+                existing.permission_level = member.permission_level
+                existing.status = MemberStatus.APPROVED.value
+            else:
+                # Create new ResourceMember for this KB
+                new_member = ResourceMember(
+                    resource_type=ResourceType.KNOWLEDGE_BASE.value,
+                    resource_id=knowledge_base_id,
+                    user_id=member.user_id,
+                    role=member.role,
+                    permission_level=member.permission_level,
+                    status=MemberStatus.APPROVED.value,
+                    invited_by_user_id=creator_user_id,
+                    share_link_id=0,
+                    reviewed_by_user_id=0,
+                    copied_resource_id=0,
+                )
+                db.add(new_member)
+
+        db.flush()
 
     @staticmethod
     def get_knowledge_base(
@@ -265,7 +438,7 @@ class KnowledgeService:
             return None
 
         # Use the knowledge share service to check access
-        has_access, _, _, _ = knowledge_share_service.get_user_kb_permission(
+        has_access, _, _ = knowledge_share_service.get_user_kb_permission(
             db, knowledge_base_id, user_id
         )
 
@@ -350,16 +523,20 @@ class KnowledgeService:
             if role is None:
                 return []
 
-            return (
+            # Get knowledge bases that belong to this group (namespace == group_name)
+            group_kbs = (
                 db.query(Kind)
                 .filter(
                     Kind.kind == "KnowledgeBase",
                     Kind.namespace == group_name,
                     Kind.is_active == True,
                 )
-                .order_by(Kind.updated_at.desc())
                 .all()
             )
+
+            # Sort by updated_at
+            group_kbs.sort(key=lambda kb: kb.updated_at, reverse=True)
+            return group_kbs
 
         elif scope == ResourceScope.ORGANIZATION:
             # Organization knowledge bases are visible to all users

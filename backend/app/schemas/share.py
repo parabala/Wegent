@@ -14,7 +14,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.share_link import PermissionLevel, ResourceType
+from app.models.share_link import ResourceType
 
 
 class MemberStatus(str, Enum):
@@ -28,7 +28,6 @@ class MemberStatus(str, Enum):
 class MemberRole(str, Enum):
     """Member role for resource access control.
 
-    Maps to permission_level for backward compatibility:
     - Owner: Creator of the resource, has manage permission
     - Maintainer: Can manage members, has manage permission
     - Developer: Can edit content, has edit permission
@@ -175,9 +174,6 @@ class ResourceMemberResponse(BaseModel):
     user_name: Optional[str] = None  # Populated from user lookup
     user_email: Optional[str] = None  # Populated from user lookup
     role: str = Field(description="Member role: Owner, Maintainer, Developer, Reporter")
-    permission_level: str = Field(
-        description="Permission level (deprecated, use role)",
-    )
     status: str
     invited_by_user_id: int
     invited_by_user_name: Optional[str] = None  # Populated from user lookup
@@ -200,7 +196,6 @@ class ResourceMemberInDB(BaseModel):
     resource_id: int
     user_id: int
     role: str = Field(description="Member role: Owner, Maintainer, Developer, Reporter")
-    permission_level: str = Field(description="Permission level (deprecated, use role)")
     status: str
     invited_by_user_id: int
     share_link_id: Optional[int] = None
@@ -259,9 +254,6 @@ class PendingRequestResponse(BaseModel):
     user_name: Optional[str] = None
     user_email: Optional[str] = None
     requested_role: str = Field(description="Requested role")
-    requested_permission_level: str = Field(
-        description="Requested permission level (deprecated, use requested_role)"
-    )
     requested_at: datetime
 
 
@@ -289,9 +281,6 @@ class ReviewRequestResponse(BaseModel):
     member_id: int
     new_status: MemberStatus
     role: Optional[str] = Field(None, description="Granted role")
-    permission_level: Optional[str] = Field(
-        None, description="Permission level (deprecated, use role)"
-    )
 
 
 # =============================================================================
@@ -309,9 +298,6 @@ class ShareInfoResponse(BaseModel):
     owner_user_name: str = Field(description="Name of resource owner")
     require_approval: bool
     default_role: str = Field(description="Default role for joiners")
-    default_permission_level: str = Field(
-        description="Default permission level (deprecated, use default_role)"
-    )
     is_expired: bool = False
 
 
@@ -326,14 +312,14 @@ class PermissionCheckRequest(BaseModel):
     resource_type: ResourceType
     resource_id: int
     user_id: int
-    required_level: PermissionLevel
+    required_role: MemberRole
 
 
 class PermissionCheckResponse(BaseModel):
     """Response for permission check."""
 
     has_permission: bool
-    actual_permission_level: Optional[str] = None
+    actual_role: Optional[str] = None
 
 
 # =============================================================================
@@ -346,9 +332,6 @@ class PendingRequestInfo(BaseModel):
 
     id: int = Field(..., description="Member record ID")
     role: MemberRole = Field(..., description="Requested role")
-    permission_level: PermissionLevel = Field(
-        ..., description="Requested permission level (deprecated, use role)"
-    )
     requested_at: datetime = Field(..., description="Request timestamp")
 
 
@@ -359,10 +342,6 @@ class MyKBPermissionResponse(BaseModel):
     role: Optional[MemberRole] = Field(
         None,
         description="User's role (null if no access)",
-    )
-    permission_level: Optional[PermissionLevel] = Field(
-        None,
-        description="User's permission level (deprecated, use role)",
     )
     is_creator: bool = Field(..., description="Whether user is the KB creator")
     pending_request: Optional[PendingRequestInfo] = Field(
@@ -398,7 +377,4 @@ class PublicKnowledgeBaseResponse(BaseModel):
     creator_name: str = Field(..., description="Creator username")
     require_approval: bool = Field(..., description="Whether joining requires approval")
     default_role: str = Field(..., description="Default role for joiners")
-    default_permission_level: str = Field(
-        ..., description="Default permission level (deprecated, use default_role)"
-    )
     is_expired: bool = Field(False, description="Whether the share link has expired")

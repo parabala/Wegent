@@ -16,7 +16,7 @@
   "shared_by": "Shared by {{name}}",
   "read_only_notice": "This is a publicly shared knowledge base. Login to apply for access.",
   "go_home": "Go to Knowledge Base",
-  "select_permission": "Select Permission Level",
+  "select_role": "Select Role",
   "view_permission": "View",
   "view_permission_desc": "Can view documents in this knowledge base",
   "edit_permission": "Edit",
@@ -28,7 +28,6 @@
   "already_have_access_desc": "You already have access to this knowledge base.",
   "cannot_join_own": "Cannot Join Own Resource",
   "cannot_join_own_desc": "You cannot apply for access to your own knowledge base.",
-  "permission_level": "Permission Level",
   "requested_at": "Requested At",
   "require_approval_notice": "Access requires owner approval"
 }

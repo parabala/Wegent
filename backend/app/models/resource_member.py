@@ -255,18 +255,10 @@ class ResourceMember(Base):
         return level_map.get(self.permission_level.lower(), ResourceRole.REPORTER.value)
 
     def set_role(self, role: str) -> None:
-        """Set role and update permission_level for backward compatibility.
+        """Set role for the member.
 
         Args:
             role: The role to set (Owner, Maintainer, Developer, Reporter)
         """
         self.role = role
-
-        # Update permission_level for backward compatibility
-        role_to_permission = {
-            ResourceRole.OWNER.value: PermissionLevel.MANAGE.value,
-            ResourceRole.MAINTAINER.value: PermissionLevel.MANAGE.value,
-            ResourceRole.DEVELOPER.value: PermissionLevel.EDIT.value,
-            ResourceRole.REPORTER.value: PermissionLevel.VIEW.value,
-        }
-        self.permission_level = role_to_permission.get(role, PermissionLevel.VIEW.value)
+        # Note: permission_level is no longer set here, database uses default value

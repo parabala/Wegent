@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
 from app.core import security
+from app.models.share_link import ResourceType
 from app.models.user import User
 from app.schemas.share import (
     JoinByLinkRequest,
@@ -25,12 +26,10 @@ from app.schemas.share import (
     MemberListResponse,
     MyKBPermissionResponse,
     PendingRequestListResponse,
-    PermissionLevel,
     PublicKnowledgeBaseResponse,
     ResourceMemberCreate,
     ResourceMemberResponse,
     ResourceMemberUpdate,
-    ResourceType,
     ReviewRequestBody,
     ReviewRequestResponse,
     ShareInfoResponse,

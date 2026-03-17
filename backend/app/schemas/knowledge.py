@@ -58,7 +58,12 @@ class ResourceScope(str, Enum):
 class KnowledgeBaseCreate(BaseModel):
     """Schema for creating a knowledge base."""
 
-    name: str = Field(..., min_length=1, max_length=100)
+    name: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=100,
+        description="Knowledge base name. If not provided and linked_group is set, will be auto-generated from group name",
+    )
     description: Optional[str] = Field(None, max_length=500)
     namespace: str = Field(default="default", max_length=255)
     kb_type: Optional[str] = Field(
@@ -75,6 +80,10 @@ class KnowledgeBaseCreate(BaseModel):
     summary_model_ref: Optional[Dict[str, str]] = Field(
         None,
         description="Model reference for summary generation. Format: {'name': 'model-name', 'namespace': 'default', 'type': 'public|user|group'}",
+    )
+    linked_group: Optional[str] = Field(
+        None,
+        description="Group name to link this knowledge base to. When set, permissions are inherited from the group members",
     )
 
 
@@ -184,16 +193,32 @@ class KnowledgeBaseResponse(BaseModel):
     max_calls_per_conversation: int = Field(default=10)
     exempt_calls_before_check: int = Field(default=5)
 
+    # Linked group for permission inheritance
+    linked_group: Optional[str] = Field(
+        None,
+        description="Group name that this knowledge base is linked to for permission inheritance",
+    )
+    permission_source: Optional[str] = Field(
+        None,
+        description="Source of user's permission: 'creator', 'linked_group', 'explicit', 'organization', 'group_namespace'",
+    )
+
     created_at: datetime
     updated_at: datetime
 
     @classmethod
-    def from_kind(cls, kind, document_count: int = 0):
+    def from_kind(
+        cls,
+        kind,
+        document_count: int = 0,
+        permission_source: Optional[str] = None,
+    ):
         """Create response from Kind object
 
         Args:
             kind: Kind object
             document_count: Document count (should be queried from database)
+            permission_source: Source of user's permission for this KB
         """
         spec = kind.json.get("spec", {})
         # Extract summary from spec.summary if available
@@ -202,6 +227,9 @@ class KnowledgeBaseResponse(BaseModel):
         summary_model_ref = spec.get("summaryModelRef")
         # Extract kb_type from spec, default to 'notebook' for backward compatibility
         kb_type = spec.get("kbType", "notebook")
+        # linked_group is derived from namespace (not stored in spec to avoid redundancy)
+        # If namespace is not 'default', it's considered linked to that group
+        linked_group = kind.namespace if kind.namespace != "default" else None
 
         # Extract call limit configuration with defaults for backward compatibility
         max_calls = spec.get("maxCallsPerConversation", 10)
@@ -232,6 +260,8 @@ class KnowledgeBaseResponse(BaseModel):
             summary=summary,
             max_calls_per_conversation=max_calls,
             exempt_calls_before_check=exempt_calls,
+            linked_group=linked_group,
+            permission_source=permission_source,
             is_active=kind.is_active,
             created_at=kind.created_at,
             updated_at=kind.updated_at,

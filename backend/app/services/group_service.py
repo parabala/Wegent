@@ -197,6 +197,7 @@ def list_user_groups(
     skip: int = 0,
     limit: int = 100,
     include_organization: bool = False,
+    filter_manageable: bool = False,
 ) -> list[GroupResponse]:
     """
     List groups where user is a member (created or joined).
@@ -208,6 +209,7 @@ def list_user_groups(
         skip: Number of records to skip
         limit: Maximum number of records to return
         include_organization: Whether to include organization-level groups (admin only)
+        filter_manageable: If True, only return groups where user has Owner, Maintainer, or Developer role
 
     Returns:
         List of GroupResponse objects with additional fields
@@ -220,7 +222,23 @@ def list_user_groups(
 
     # Create a mapping of group_name -> role
     group_roles = {name: role for name, role in member_data}
+
+    # Filter to only manageable groups if requested
+    # Manageable = Owner or Maintainer (can create/manage knowledge bases)
+    # Developer can edit but cannot create knowledge bases
+    if filter_manageable:
+        manageable_roles = {
+            GroupRole.Owner.value,
+            GroupRole.Maintainer.value,
+        }
+        group_roles = {
+            name: role for name, role in group_roles.items() if role in manageable_roles
+        }
+
     group_names = list(group_roles.keys())
+
+    if not group_names:
+        return []
 
     # Build query for groups
     query = db.query(Namespace).filter(
@@ -491,6 +509,11 @@ def add_member(
     db.commit()
     db.refresh(new_member)
 
+    # Sync member to linked knowledge bases
+    _sync_member_to_linked_knowledge_bases(
+        db, group_name, new_member.user_id, new_member.role, new_member.permission_level
+    )
+
     # Build response with group_name field for backward compatibility
     response_data = {
         "id": new_member.id,
@@ -583,6 +606,9 @@ def remove_member(
     # Transfer resources to owner
     _transfer_resources_to_owner(db, group_name, user_id, group.owner_user_id)
 
+    # Remove member from linked knowledge bases
+    _remove_member_from_linked_knowledge_bases(db, group_name, user_id)
+
     # Remove member (hard delete)
     db.delete(member)
     db.commit()
@@ -663,6 +689,11 @@ def update_member_role(
 
     db.commit()
     db.refresh(member)
+
+    # Sync updated role to linked knowledge bases
+    _sync_member_to_linked_knowledge_bases(
+        db, group_name, member.user_id, member.role, member.permission_level
+    )
 
     # Build response with group_name field for backward compatibility
     response_data = {
@@ -862,4 +893,134 @@ def _transfer_resources_to_owner(
         Kind.is_active == True,
     ).update({"user_id": to_user_id})
 
+    db.commit()
+
+
+def _get_group_linked_knowledge_bases(db: Session, group_name: str) -> list[Kind]:
+    """
+    Get all knowledge bases linked to a specific group.
+
+    This function queries the knowledge bases where namespace
+    matches the given group name. Since namespace already contains
+    the group info, we don't need to check spec.linkedGroup.
+
+    Args:
+        db: Database session
+        group_name: Name of the linked group
+
+    Returns:
+        List of Kind objects representing linked knowledge bases
+    """
+    # Query knowledge bases where namespace equals the group name
+    # This is more efficient than querying all and filtering in Python
+    return (
+        db.query(Kind)
+        .filter(
+            Kind.kind == "KnowledgeBase",
+            Kind.namespace == group_name,
+            Kind.is_active == True,
+        )
+        .all()
+    )
+
+
+def _sync_member_to_linked_knowledge_bases(
+    db: Session,
+    group_name: str,
+    user_id: int,
+    role: str,
+    permission_level: str,
+) -> None:
+    """
+    Sync a group member to all linked knowledge bases.
+
+    When a member is added or their role is updated in a group,
+    this function updates their access to all knowledge bases
+    linked to that group.
+
+    Args:
+        db: Database session
+        group_name: Name of the group
+        user_id: User ID to sync
+        role: Role to assign in the knowledge bases
+        permission_level: Permission level to assign
+    """
+    from app.models.share_link import ResourceType
+
+    # Get all linked knowledge bases
+    linked_kbs = _get_group_linked_knowledge_bases(db, group_name)
+
+    for kb in linked_kbs:
+        # Skip if user is the creator (they have owner access via user_id)
+        if kb.user_id == user_id:
+            continue
+
+        # Check if member already exists for this KB
+        existing = (
+            db.query(ResourceMember)
+            .filter(
+                ResourceMember.resource_type == ResourceType.KNOWLEDGE_BASE.value,
+                ResourceMember.resource_id == kb.id,
+                ResourceMember.user_id == user_id,
+            )
+            .first()
+        )
+
+        if existing:
+            # Update existing member's role
+            existing.role = role
+            existing.permission_level = permission_level
+            existing.status = MemberStatus.APPROVED.value
+        else:
+            # Create new ResourceMember for this KB
+            new_member = ResourceMember(
+                resource_type=ResourceType.KNOWLEDGE_BASE.value,
+                resource_id=kb.id,
+                user_id=user_id,
+                role=role,
+                permission_level=permission_level,
+                status=MemberStatus.APPROVED.value,
+                invited_by_user_id=kb.user_id,  # Set creator as inviter
+                share_link_id=0,
+                reviewed_by_user_id=0,
+                copied_resource_id=0,
+            )
+            db.add(new_member)
+
+    if linked_kbs:
+        db.flush()
+
+
+def _remove_member_from_linked_knowledge_bases(
+    db: Session,
+    group_name: str,
+    user_id: int,
+) -> None:
+    """
+    Remove a group member from all linked knowledge bases.
+
+    When a member is removed from a group, this function removes
+    their access to all knowledge bases linked to that group.
+
+    Args:
+        db: Database session
+        group_name: Name of the group
+        user_id: User ID to remove
+    """
+    from app.models.share_link import ResourceType
+
+    # Get all linked knowledge bases
+    linked_kbs = _get_group_linked_knowledge_bases(db, group_name)
+
+    kb_ids = [kb.id for kb in linked_kbs]
+
+    if kb_ids:
+        # Delete ResourceMember records for this user in linked KBs
+        db.query(ResourceMember).filter(
+            ResourceMember.resource_type == ResourceType.KNOWLEDGE_BASE.value,
+            ResourceMember.resource_id.in_(kb_ids),
+            ResourceMember.user_id == user_id,
+        ).delete(synchronize_session=False)
+
+        db.flush()
     db.commit()

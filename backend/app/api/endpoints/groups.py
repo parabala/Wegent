@@ -33,12 +33,18 @@ router = APIRouter()
 def list_groups(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
+    filter: str = Query(
+        None,
+        description="Filter groups: 'manageable' for groups where user has edit permission",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
     List all groups where the current user is a member (created or joined).
     Returns paginated results.
+
+    When filter='manageable', only returns groups where user has Owner, Maintainer, or Developer role.
     """
     skip = (page - 1) * limit
     # Check if user is admin to include organization groups
@@ -50,6 +56,7 @@ def list_groups(
         skip=skip,
         limit=limit,
         include_organization=is_admin,
+        filter_manageable=(filter == "manageable"),
     )
 
     # Calculate total count
@@ -63,6 +70,7 @@ def list_groups(
             skip=0,
             limit=1000,
             include_organization=is_admin,
+            filter_manageable=(filter == "manageable"),
         )
         total = len(all_groups)
 

@@ -76,6 +76,15 @@ export interface SummaryModelRef {
 // - classic: Document list only without chat functionality (legacy style)
 export type KnowledgeBaseType = 'notebook' | 'classic'
 
+// Permission source type for knowledge base
+export type PermissionSource = 'independent' | 'group'
+
+// Linked group info for knowledge base
+export interface LinkedGroupInfo {
+  name: string
+  display_name: string | null
+}
+
 // Knowledge Base types
 export interface KnowledgeBase {
   id: number
@@ -95,6 +104,10 @@ export interface KnowledgeBase {
   max_calls_per_conversation: number
   /** Number of calls exempt from token checking (must be < max_calls_per_conversation) */
   exempt_calls_before_check: number
+  /** Linked group info - null if not linked to any group */
+  linked_group?: LinkedGroupInfo | null
+  /** Permission source: 'independent' or 'group' */
+  permission_source?: PermissionSource
   created_at: string
   updated_at: string
 }
@@ -112,6 +125,8 @@ export interface KnowledgeBaseCreate {
   max_calls_per_conversation?: number
   /** Number of calls exempt from token checking (must be < max_calls_per_conversation) */
   exempt_calls_before_check?: number
+  /** Linked group name - null if not linked to any group */
+  linked_group?: string | null
 }
 
 export interface RetrievalConfigUpdate {
@@ -321,27 +336,11 @@ export interface ChunkListResponse {
 
 // ============== Permission Types ==============
 
-export type PermissionLevel = 'view' | 'edit' | 'manage'
 export type PermissionStatus = 'pending' | 'approved' | 'rejected'
 export type ReviewAction = 'approve' | 'reject'
 
-// New role-based permission types
+// Role-based permission types
 export type MemberRole = 'Owner' | 'Maintainer' | 'Developer' | 'Reporter'
-
-// Role to permission level mapping
-export const ROLE_TO_PERMISSION: Record<MemberRole, PermissionLevel> = {
-  Owner: 'manage',
-  Maintainer: 'manage',
-  Developer: 'edit',
-  Reporter: 'view',
-}
-
-// Permission level to role mapping (for backward compatibility)
-export const PERMISSION_TO_ROLE: Record<PermissionLevel, MemberRole> = {
-  view: 'Reporter',
-  edit: 'Developer',
-  manage: 'Maintainer',
-}
 
 // Role display names (Chinese)
 export const ROLE_DISPLAY_NAMES: Record<MemberRole, string> = {
@@ -370,16 +369,12 @@ export const ROLE_HIERARCHY: Record<MemberRole, number> = {
 // Permission Apply types
 export interface PermissionApplyRequest {
   role: MemberRole
-  /** @deprecated Use role instead */
-  permission_level?: PermissionLevel
 }
 
 export interface PermissionApplyResponse {
   id: number
   knowledge_base_id: number
   role: MemberRole
-  /** @deprecated Use role instead */
-  permission_level: PermissionLevel
   status: PermissionStatus
   requested_at: string
   message: string
@@ -389,16 +384,12 @@ export interface PermissionApplyResponse {
 export interface PermissionReviewRequest {
   action: ReviewAction
   role?: MemberRole
-  /** @deprecated Use role instead */
-  permission_level?: PermissionLevel
 }
 
 export interface PermissionReviewResponse {
   id: number
   user_id: number
   role: MemberRole | null
-  /** @deprecated Use role instead */
-  permission_level: PermissionLevel | null
   status: PermissionStatus
   reviewed_at: string
   message: string
@@ -408,14 +399,10 @@ export interface PermissionReviewResponse {
 export interface PermissionAddRequest {
   user_name: string
   role: MemberRole
-  /** @deprecated Use role instead */
-  permission_level?: PermissionLevel
 }
 
 export interface PermissionUpdateRequest {
   role: MemberRole
-  /** @deprecated Use role instead */
-  permission_level?: PermissionLevel
 }
 
 // Permission User Info types
@@ -425,8 +412,6 @@ export interface PermissionUserInfo {
   username: string
   email?: string
   role: MemberRole
-  /** @deprecated Use role instead */
-  permission_level: PermissionLevel
   requested_at: string
   reviewed_at?: string
   reviewed_by?: number
@@ -438,8 +423,6 @@ export interface PendingPermissionInfo {
   username: string
   email?: string
   role: MemberRole
-  /** @deprecated Use role instead */
-  permission_level: PermissionLevel
   requested_at: string
 }
 
@@ -451,34 +434,21 @@ export interface ApprovedPermissionsByRole {
   Reporter: PermissionUserInfo[]
 }
 
-/** @deprecated Use ApprovedPermissionsByRole instead */
-export interface ApprovedPermissionsByLevel {
-  view: PermissionUserInfo[]
-  edit: PermissionUserInfo[]
-  manage: PermissionUserInfo[]
-}
-
 export interface PermissionListResponse {
   pending: PendingPermissionInfo[]
   approved: ApprovedPermissionsByRole
-  /** @deprecated Use approved instead */
-  approved_by_level?: ApprovedPermissionsByLevel
 }
 
 // Current User Permission types
 export interface PendingRequestInfo {
   id: number
   role: MemberRole
-  /** @deprecated Use role instead */
-  permission_level: PermissionLevel
   requested_at: string
 }
 
 export interface MyPermissionResponse {
   has_access: boolean
   role: MemberRole | null
-  /** @deprecated Use role instead */
-  permission_level: PermissionLevel | null
   is_creator: boolean
   pending_request: PendingRequestInfo | null
 }
@@ -489,8 +459,6 @@ export interface PermissionResponse {
   knowledge_base_id: number
   user_id: number
   role: MemberRole
-  /** @deprecated Use role instead */
-  permission_level: PermissionLevel
   status: PermissionStatus
   requested_at: string
   reviewed_at?: string
@@ -520,8 +488,6 @@ export interface PublicKnowledgeBaseResponse {
   creator_name: string
   require_approval: boolean
   default_role: MemberRole
-  /** @deprecated Use default_role instead */
-  default_permission_level: string
   is_expired: boolean
 }
 
@@ -529,8 +495,6 @@ export interface PublicKnowledgeBaseResponse {
 export interface ShareLinkConfig {
   require_approval?: boolean
   default_role?: MemberRole
-  /** @deprecated Use default_role instead */
-  default_permission_level?: PermissionLevel
   expires_in_hours?: number
 }
 
@@ -542,8 +506,6 @@ export interface ShareLinkResponse {
   share_token: string
   require_approval: boolean
   default_role: MemberRole
-  /** @deprecated Use default_role instead */
-  default_permission_level: string
   expires_at?: string
   is_active: boolean
   created_by_user_id: number
@@ -555,8 +517,6 @@ export interface ShareLinkResponse {
 export interface JoinByLinkRequest {
   share_token: string
   requested_role?: MemberRole
-  /** @deprecated Use requested_role instead */
-  requested_permission_level?: PermissionLevel
 }
 
 export interface JoinByLinkResponse {

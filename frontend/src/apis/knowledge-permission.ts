@@ -30,7 +30,6 @@ interface ResourceMemberResponse {
   user_name: string | null
   user_email: string | null
   role: string
-  permission_level: string
   status: string
   invited_by_user_id: number
   invited_by_user_name: string | null
@@ -97,28 +96,21 @@ export const knowledgePermissionApi = {
         user_name: string | null
         user_email: string | null
         requested_role: string
-        requested_permission_level: string
         requested_at: string
       }[]
       total: number
     }>(`/share/KnowledgeBase/${kbId}/requests`)
 
-    // Transform pending requests - use role if available, fallback to permission_level
+    // Transform pending requests
     const pending = pendingResponse.requests.map(r => {
       // Use requested_role if available (valid MemberRole), otherwise undefined
       const role = (r.requested_role as MemberRole) || undefined
-      // Keep legacy permission_level as separate value
-      const permissionLevel = r.requested_permission_level.toLowerCase() as
-        | 'view'
-        | 'edit'
-        | 'manage'
       return {
         id: r.id,
         user_id: r.user_id,
         username: r.user_name || '',
         email: r.user_email || '',
         role: role,
-        permission_level: permissionLevel,
         requested_at: r.requested_at,
       }
     })
@@ -126,8 +118,8 @@ export const knowledgePermissionApi = {
     // Transform approved members - group by role
     const approved = membersResponse.members.reduce(
       (acc, m) => {
-        // Use role if available, otherwise derive from permission_level
-        const role = (m.role || m.permission_level) as MemberRole
+        // Use role from API response
+        const role = m.role as MemberRole
         if (!acc[role]) acc[role] = []
         const member = {
           id: m.id,
@@ -135,7 +127,6 @@ export const knowledgePermissionApi = {
           username: m.user_name || '',
           email: m.user_email || '',
           role: role,
-          permission_level: m.permission_level.toLowerCase() as 'view' | 'edit' | 'manage',
           requested_at: m.requested_at,
           reviewed_at: m.reviewed_at || undefined,
           reviewed_by: m.reviewed_by_user_id || undefined,

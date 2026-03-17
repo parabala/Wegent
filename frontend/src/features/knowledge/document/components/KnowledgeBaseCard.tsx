@@ -14,6 +14,7 @@ import {
   FolderOpen,
   Share2,
   MessageSquarePlus,
+  Users,
 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { useTranslation } from '@/hooks/useTranslation'
@@ -44,7 +45,7 @@ export function KnowledgeBaseCard({
   canShare = false,
   canCreateGroupChat = false,
 }: KnowledgeBaseCardProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation('knowledge')
 
   // Format date for compact display (MM-DD HH:mm)
   const formatDate = (dateString: string) => {
@@ -60,6 +61,10 @@ export function KnowledgeBaseCard({
   // Determine knowledge base type (default to 'notebook' for backward compatibility)
   const kbType = knowledgeBase.kb_type || 'notebook'
   const isNotebook = kbType === 'notebook'
+
+  // Check if permission is inherited from group
+  const isGroupPermission =
+    knowledgeBase.permission_source === 'group' || knowledgeBase.linked_group
 
   return (
     <Card
@@ -99,6 +104,18 @@ export function KnowledgeBaseCard({
           <p className="line-clamp-2">{knowledgeBase.summary.short_summary}</p>
         ) : null}
       </div>
+
+      {/* Permission source badge (if inherited from group) */}
+      {isGroupPermission && knowledgeBase.linked_group && (
+        <div className="flex-shrink-0 mb-1">
+          <span className="inline-flex items-center gap-1 text-xs text-text-muted bg-muted px-2 py-0.5 rounded">
+            <Users className="w-3 h-3" />
+            {t('knowledge:document.knowledgeBase.permissionInheritFrom', {
+              groupName: knowledgeBase.linked_group.display_name || knowledgeBase.linked_group.name,
+            })}
+          </span>
+        </div>
+      )}
 
       {/* Bottom section - stats on left, actions on right */}
       <div className="flex items-center justify-between mt-auto pt-2 flex-shrink-0">
