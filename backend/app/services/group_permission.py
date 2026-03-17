@@ -219,9 +219,9 @@ def check_knowledge_base_access_for_restricted_analyst(
     """
     Check if a user can access knowledge base content.
 
-    For Restricted Analysts in a group, they cannot access knowledge base content
-    even if the KB is in a group they belong to. This prevents them from
-    extracting document content through conversation.
+    For Restricted Analysts, they cannot access any knowledge base content
+    including group knowledge bases and shared personal knowledge bases.
+    This prevents them from extracting document content through conversation.
 
     Args:
         db: Database session
@@ -233,18 +233,15 @@ def check_knowledge_base_access_for_restricted_analyst(
         - has_access: True if user can access KB content
         - reason: Explanation if access is denied
     """
-    # Personal knowledge bases (namespace='default') are always accessible
-    if knowledge_base_namespace == "default":
-        return True, ""
-
-    # Check if user is a Restricted Analyst in this group
-    if is_restricted_analyst(db, user_id, knowledge_base_namespace):
-        return (
-            False,
-            "Restricted Analysts cannot access knowledge base content. "
-            "You can view conversations but cannot retrieve document content, "
-            "structure, or summaries from group knowledge bases.",
-        )
+    # Check if user is a Restricted Analyst in this group (for group KBs)
+    if knowledge_base_namespace != "default":
+        if is_restricted_analyst(db, user_id, knowledge_base_namespace):
+            return (
+                False,
+                "Restricted Analysts cannot access knowledge base content. "
+                "You can view conversations but cannot retrieve document content, "
+                "structure, or summaries from group knowledge bases.",
+            )
 
     return True, ""
 

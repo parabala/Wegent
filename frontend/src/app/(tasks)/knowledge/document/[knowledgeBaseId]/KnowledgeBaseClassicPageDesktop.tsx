@@ -181,13 +181,13 @@ export function KnowledgeBaseClassicPageDesktop({
     return groupRole === 'Owner' || groupRole === 'Maintainer' || groupRole === 'Developer'
   }, [knowledgeBase, user, groupRoleMap])
 
-  // Check if user can manage permissions (is creator or has manage permission)
+  // Check if user can manage permissions (is creator or has Maintainer/Owner role)
   const canManagePermissions = useMemo(() => {
     if (!knowledgeBase || !user) return false
     // Creator can always manage permissions
     if (knowledgeBase.user_id === user.id) return true
-    // User with manage permission can manage
-    if (myPermission?.permission_level === 'manage') return true
+    // User with Maintainer or Owner role can manage
+    if (myPermission?.role === 'Maintainer' || myPermission?.role === 'Owner') return true
     return false
   }, [knowledgeBase, user, myPermission])
 

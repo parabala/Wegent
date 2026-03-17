@@ -6,19 +6,44 @@
 
 import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import '@/app/tasks/tasks.css'
 import '@/features/common/scrollbar.css'
 import { useIsMobile } from '@/features/layout/hooks/useMediaQuery'
 import { TaskParamSync } from '@/features/tasks/components/params'
 import { Spinner } from '@/components/ui/spinner'
 import { useKnowledgeBaseDetail } from '@/features/knowledge/document/hooks'
+import { useTranslation } from '@/hooks/useTranslation'
+import { ShieldAlert, ArrowLeft } from 'lucide-react'
 
 // Loading fallback component for dynamic imports
 function PageLoadingFallback() {
   return (
     <div className="flex h-screen items-center justify-center bg-base">
       <Spinner />
+    </div>
+  )
+}
+
+// Access denied error component
+function AccessDeniedError({ onBack }: { onBack: () => void }) {
+  const { t } = useTranslation('knowledge')
+  return (
+    <div className="flex h-screen items-center justify-center bg-base">
+      <div className="flex flex-col items-center max-w-md px-6 text-center">
+        <ShieldAlert className="w-16 h-16 text-text-muted mb-4" />
+        <h2 className="text-xl font-semibold text-text-primary mb-2">
+          {t('document.accessDenied.title')}
+        </h2>
+        <p className="text-sm text-text-secondary mb-6">{t('document.accessDenied.description')}</p>
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 rounded-md transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          {t('document.accessDenied.backButton')}
+        </button>
+      </div>
     </div>
   )
 }
@@ -86,6 +111,7 @@ export default function KnowledgeBaseChatPage() {
   // Mobile detection
   const isMobile = useIsMobile()
   const params = useParams()
+  const router = useRouter()
 
   // Parse knowledge base ID from URL
   const knowledgeBaseId = params.knowledgeBaseId
@@ -97,15 +123,26 @@ export default function KnowledgeBaseChatPage() {
   const {
     knowledgeBase,
     loading,
+    error,
     refresh: refreshKnowledgeBase,
   } = useKnowledgeBaseDetail({
     knowledgeBaseId: knowledgeBaseId || 0,
     autoLoad: !!knowledgeBaseId,
   })
 
+  // Handle back navigation
+  const handleBack = () => {
+    router.push('/tasks?type=document')
+  }
+
   // Show loading while fetching knowledge base info
-  if (loading || !knowledgeBase) {
+  if (loading) {
     return <PageLoadingFallback />
+  }
+
+  // Show access denied error when fetch fails (403/404)
+  if (error || !knowledgeBase) {
+    return <AccessDeniedError onBack={handleBack} />
   }
 
   // Determine the layout type (default to 'notebook' if not specified)

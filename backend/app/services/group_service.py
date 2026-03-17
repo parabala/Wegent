@@ -149,7 +149,6 @@ def create_group(
         resource_id=new_group.id,
         user_id=owner_user_id,
         role=GroupRole.Owner.value,
-        permission_level="manage",
         status=MemberStatus.APPROVED.value,
         invited_by_user_id=owner_user_id,  # Self-invited
         share_link_id=0,
@@ -650,16 +649,8 @@ def update_member_role(
                 detail="Cannot change role of the last owner. Add another owner first.",
             )
 
-    # Update role and permission_level
+    # Update role
     member.role = new_role.value
-    role_to_permission = {
-        GroupRole.Owner.value: "manage",
-        GroupRole.Maintainer.value: "manage",
-        GroupRole.Developer.value: "edit",
-        GroupRole.Reporter.value: "view",
-        GroupRole.RestrictedAnalyst.value: "view",
-    }
-    member.permission_level = role_to_permission.get(new_role.value, "view")
 
     db.commit()
     db.refresh(member)
@@ -736,14 +727,12 @@ def transfer_ownership(
     group.owner_user_id = new_owner_user_id
 
     # Update member roles
+    # Update member roles
     if current_owner_member:
         current_owner_member.role = GroupRole.Maintainer.value
-        current_owner_member.permission_level = "manage"
 
     if new_owner_member:
         new_owner_member.role = GroupRole.Owner.value
-        new_owner_member.permission_level = "manage"
-
     db.commit()
     db.refresh(group)
 
@@ -807,7 +796,6 @@ def invite_all_users(
                 resource_id=group.id,
                 user_id=user.id,
                 role=GroupRole.Reporter.value,
-                permission_level="view",
                 status=MemberStatus.APPROVED.value,
                 invited_by_user_id=invited_by_user_id,
                 share_link_id=0,

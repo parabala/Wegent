@@ -59,6 +59,14 @@ export function AddUserForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="Owner">
+                <div>
+                  <div className="font-medium">{t('document.permission.role.Owner')}</div>
+                  <div className="text-xs text-text-muted">
+                    {t('document.permission.role.OwnerDescription')}
+                  </div>
+                </div>
+              </SelectItem>
               <SelectItem value="Maintainer">
                 <div>
                   <div className="font-medium">{t('document.permission.role.Maintainer')}</div>
@@ -80,6 +88,16 @@ export function AddUserForm({
                   <div className="font-medium">{t('document.permission.role.Reporter')}</div>
                   <div className="text-xs text-text-muted">
                     {t('document.permission.role.ReporterDescription')}
+                  </div>
+                </div>
+              </SelectItem>
+              <SelectItem value="RestrictedAnalyst">
+                <div>
+                  <div className="font-medium">
+                    {t('document.permission.role.RestrictedAnalyst')}
+                  </div>
+                  <div className="text-xs text-text-muted">
+                    {t('document.permission.role.RestrictedAnalystDescription')}
                   </div>
                 </div>
               </SelectItem>

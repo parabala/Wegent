@@ -8,7 +8,6 @@ Share link model for unified resource sharing.
 Stores share link configurations and tokens for shared resources.
 Supports Team, Task, and KnowledgeBase resource types.
 """
-
 from datetime import datetime
 from enum import Enum as PyEnum
 
@@ -26,12 +25,11 @@ class ResourceType(str, PyEnum):
     KNOWLEDGE_BASE = "KnowledgeBase"
 
 
-class PermissionLevel(str, PyEnum):
-    """Permission levels for resource access."""
+# Import GroupRole from namespace schema for consistency
+from app.schemas.namespace import GroupRole
 
-    VIEW = "view"  # Can view resource content
-    EDIT = "edit"  # Can modify resource content
-    MANAGE = "manage"  # Can manage other users' permissions
+# Keep MemberRole as alias for backward compatibility
+MemberRole = GroupRole
 
 
 class ShareLink(Base):
@@ -80,12 +78,12 @@ class ShareLink(Base):
         default=True,
         comment="Whether joining requires approval",
     )
-    default_permission_level = Column(
+    default_role = Column(
         String(20),
         nullable=False,
-        default=PermissionLevel.VIEW.value,
-        server_default="view",
-        comment="Default permission level: view, edit, manage",
+        default=MemberRole.Reporter.value,
+        server_default="Reporter",
+        comment="Default member role: Owner, Maintainer, Developer, Reporter",
     )
 
     # Expiration - default to year 9999 for "never expires"
@@ -145,3 +143,11 @@ class ShareLink(Base):
     def is_expired(self) -> bool:
         """Check if the share link has expired."""
         return datetime.utcnow() > self.expires_at
+
+    def get_default_role(self) -> str:
+        """Get default role for members joining via this link.
+
+        Returns:
+            Role string: Owner, Maintainer, Developer, or Reporter
+        """
+        return self.default_role if self.default_role else MemberRole.Reporter.value
