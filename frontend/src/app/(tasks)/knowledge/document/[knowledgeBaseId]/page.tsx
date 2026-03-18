@@ -110,9 +110,15 @@ export default function KnowledgeBaseChatPage() {
     autoLoad: !!knowledgeBaseId,
   })
 
-  // Handle back navigation
+  // Handle back navigation with fallback to knowledge list
   const handleBack = () => {
-    router.back()
+    // Check if there's history to go back to
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back()
+    } else {
+      // Fallback to knowledge list when no history available
+      router.push('/knowledge?type=document')
+    }
   }
 
   // Handle navigate to knowledge base list

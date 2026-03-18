@@ -39,9 +39,16 @@ export function useKnowledgeBaseDetail(options: UseKnowledgeBaseDetailOptions) {
     } catch (err) {
       // Check if it's a 403 Forbidden error (access denied)
       if (err instanceof ApiError && err.status === 403) {
+        // 403 path: exclusive access denied state
         setAccessDenied(true)
+        setError(null)
+        setKnowledgeBase(null)
+      } else {
+        // Non-403 errors: set error state and clear other states
+        setAccessDenied(false)
+        setError(err instanceof Error ? err.message : 'Failed to fetch knowledge base')
+        setKnowledgeBase(null)
       }
-      setError(err instanceof Error ? err.message : 'Failed to fetch knowledge base')
     } finally {
       setLoading(false)
     }

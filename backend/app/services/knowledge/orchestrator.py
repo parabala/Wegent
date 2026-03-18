@@ -649,7 +649,20 @@ class KnowledgeOrchestrator:
         )
 
         if not knowledge_base:
-            raise ValueError("Knowledge base not found or access denied")
+            # Check if KB exists but user has no access, or KB doesn't exist
+            kb_exists = (
+                db.query(Kind)
+                .filter(
+                    Kind.id == knowledge_base_id,
+                    Kind.kind == "KnowledgeBase",
+                    Kind.is_active == True,
+                )
+                .first()
+            )
+            if kb_exists:
+                raise ValueError("Access denied to knowledge base")
+            else:
+                raise ValueError("Knowledge base not found")
 
         return KnowledgeBaseResponse.from_kind(
             knowledge_base, KnowledgeService.get_document_count(db, knowledge_base.id)
