@@ -608,8 +608,10 @@ class KnowledgeOrchestrator:
             knowledge_base_id=knowledge_base_id,
             user_id=user.id,
         )
-        if not kb or not has_access:
-            raise ValueError("Knowledge base not found or access denied")
+        if not kb:
+            raise ValueError("Knowledge base not found")
+        if not has_access:
+            raise ValueError("Access denied to knowledge base")
 
         documents = KnowledgeService.list_documents(
             db=db,
@@ -940,8 +942,10 @@ class KnowledgeOrchestrator:
             knowledge_base_id=knowledge_base_id,
             user_id=user.id,
         )
-        if not kb or not has_access:
-            raise ValueError("Knowledge base not found or access denied")
+        if not kb:
+            raise ValueError("Knowledge base not found")
+        if not has_access:
+            raise ValueError("Access denied to knowledge base")
 
         # Validate input based on source_type
         normalized_ext: str = DEFAULT_TEXT_FILE_EXTENSION
@@ -1040,8 +1044,10 @@ class KnowledgeOrchestrator:
             knowledge_base_id=knowledge_base_id,
             user_id=user.id,
         )
-        if not kb or not has_access:
-            raise ValueError("Knowledge base not found or access denied")
+        if not kb:
+            raise ValueError("Knowledge base not found")
+        if not has_access:
+            raise ValueError("Access denied to knowledge base")
 
         # Get splitter config from data if provided
         splitter_config_dict = None
