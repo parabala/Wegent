@@ -28,7 +28,10 @@ from app.schemas.share import (
 
 # Alias for backward compatibility
 SchemaMemberRole = GroupRole
-from app.services.group_permission import get_effective_role_in_group
+from app.services.group_permission import (
+    get_effective_role_in_group,
+    is_restricted_analyst,
+)
 from app.services.knowledge.knowledge_service import _is_organization_namespace
 from app.services.share.base_service import UnifiedShareService
 from shared.telemetry.decorators import add_span_event, set_span_attribute, trace_sync
@@ -58,6 +61,9 @@ class KnowledgeShareService(UnifiedShareService):
         2. Explicit shared access (ResourceMember)
         3. Organization membership (for organization knowledge bases)
         4. Team membership (for team knowledge bases)
+
+        Note: For group KBs, Restricted Analysts are denied access regardless of
+        explicit permissions (creator or ResourceMember grants).
         """
         logger.info(
             f"[_get_resource] Fetching KnowledgeBase: resource_id={resource_id}, user_id={user_id}"
@@ -83,6 +89,18 @@ class KnowledgeShareService(UnifiedShareService):
             f"[_get_resource] KnowledgeBase found: id={kb.id}, "
             f"kb.user_id={kb.user_id}, namespace={kb.namespace}"
         )
+
+        # For group knowledge bases, check Restricted Analyst status FIRST
+        # This check must run before creator/explicit-share checks to prevent bypass
+        if kb.namespace != "default" and not _is_organization_namespace(
+            db, kb.namespace
+        ):
+            if is_restricted_analyst(db, user_id, kb.namespace):
+                logger.warning(
+                    f"[_get_resource] User {user_id} is Restricted Analyst in group "
+                    f"'{kb.namespace}', blocking access to KB {resource_id}"
+                )
+                return None
 
         # Check if user is creator
         if kb.user_id == user_id:
@@ -232,6 +250,18 @@ class KnowledgeShareService(UnifiedShareService):
 
         if not kb:
             return False, None, False
+
+        # For group knowledge bases, check Restricted Analyst status FIRST
+        # This check must run before creator/explicit-share checks to prevent bypass
+        if kb.namespace != "default" and not _is_organization_namespace(
+            db, kb.namespace
+        ):
+            if is_restricted_analyst(db, user_id, kb.namespace):
+                logger.warning(
+                    f"[get_user_kb_permission] User {user_id} is Restricted Analyst in group "
+                    f"'{kb.namespace}', denying access to KB {knowledge_base_id}"
+                )
+                return False, None, False
 
         # Check if user is creator
         if kb.user_id == user_id:
@@ -400,9 +430,22 @@ class KnowledgeShareService(UnifiedShareService):
                 pending_request=None,
             )
 
+        # For group knowledge bases, check Restricted Analyst status FIRST
+        # This check must run before creator/explicit-share checks to prevent bypass
+        is_restricted = False
+        if kb.namespace != "default" and not _is_organization_namespace(
+            db, kb.namespace
+        ):
+            if is_restricted_analyst(db, user_id, kb.namespace):
+                logger.warning(
+                    f"[get_my_permission] User {user_id} is Restricted Analyst in group "
+                    f"'{kb.namespace}', denying access to KB {knowledge_base_id}"
+                )
+                is_restricted = True
+
         # Check if user is creator
         is_creator = kb.user_id == user_id
-        if is_creator:
+        if is_creator and not is_restricted:
             return MyKBPermissionResponse(
                 has_access=True,
                 role=SchemaMemberRole.Owner,
@@ -425,7 +468,7 @@ class KnowledgeShareService(UnifiedShareService):
         has_explicit_access = False
         explicit_role = None
 
-        if explicit_perm:
+        if explicit_perm and not is_restricted:
             effective_role = explicit_perm.get_effective_role()
             if explicit_perm.status == MemberStatus.APPROVED.value:
                 # RestrictedAnalyst is not allowed to access knowledge base details

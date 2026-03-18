@@ -12,38 +12,16 @@ import '@/features/common/scrollbar.css'
 import { useIsMobile } from '@/features/layout/hooks/useMediaQuery'
 import { TaskParamSync } from '@/features/tasks/components/params'
 import { Spinner } from '@/components/ui/spinner'
+import { Button } from '@/components/ui/button'
 import { useKnowledgeBaseDetail } from '@/features/knowledge/document/hooks'
 import { useTranslation } from '@/hooks/useTranslation'
-import { ShieldAlert, ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Lock } from 'lucide-react'
 
 // Loading fallback component for dynamic imports
 function PageLoadingFallback() {
   return (
     <div className="flex h-screen items-center justify-center bg-base">
       <Spinner />
-    </div>
-  )
-}
-
-// Access denied error component
-function AccessDeniedError({ onBack }: { onBack: () => void }) {
-  const { t } = useTranslation('knowledge')
-  return (
-    <div className="flex h-screen items-center justify-center bg-base">
-      <div className="flex flex-col items-center max-w-md px-6 text-center">
-        <ShieldAlert className="w-16 h-16 text-text-muted mb-4" />
-        <h2 className="text-xl font-semibold text-text-primary mb-2">
-          {t('document.accessDenied.title')}
-        </h2>
-        <p className="text-sm text-text-secondary mb-6">{t('document.accessDenied.description')}</p>
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 rounded-md transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          {t('document.accessDenied.backButton')}
-        </button>
-      </div>
     </div>
   )
 }
@@ -112,6 +90,7 @@ export default function KnowledgeBaseChatPage() {
   const isMobile = useIsMobile()
   const params = useParams()
   const router = useRouter()
+  const { t } = useTranslation('knowledge')
 
   // Parse knowledge base ID from URL
   const knowledgeBaseId = params.knowledgeBaseId
@@ -124,15 +103,27 @@ export default function KnowledgeBaseChatPage() {
     knowledgeBase,
     loading,
     error,
+    accessDenied,
     refresh: refreshKnowledgeBase,
   } = useKnowledgeBaseDetail({
     knowledgeBaseId: knowledgeBaseId || 0,
     autoLoad: !!knowledgeBaseId,
   })
 
-  // Handle back navigation
+  // Handle back navigation with fallback to knowledge list
   const handleBack = () => {
-    router.push('/tasks?type=document')
+    // Check if there's history to go back to
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back()
+    } else {
+      // Fallback to knowledge list when no history available
+      router.push('/knowledge?type=document')
+    }
+  }
+
+  // Handle navigate to knowledge base list
+  const handleGoToList = () => {
+    router.push('/knowledge?type=document')
   }
 
   // Show loading while fetching knowledge base info
@@ -140,9 +131,41 @@ export default function KnowledgeBaseChatPage() {
     return <PageLoadingFallback />
   }
 
-  // Show access denied error when fetch fails (403/404)
+  // Show access denied state for 403 errors
+  if (accessDenied) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-base">
+        <div className="text-center max-w-md px-6">
+          <div className="w-16 h-16 bg-surface rounded-full flex items-center justify-center mx-auto mb-6">
+            <Lock className="w-8 h-8 text-text-muted" />
+          </div>
+          <h1 className="text-xl font-semibold text-text-primary mb-3">
+            {t('chatPage.accessDenied.title')}
+          </h1>
+          <p className="text-text-muted mb-8 leading-relaxed">
+            {t('chatPage.accessDenied.description')}
+          </p>
+          <Button variant="primary" onClick={handleGoToList}>
+            {t('chatPage.accessDenied.backButton')}
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Show error state if fetch failed (non-403 errors)
   if (error || !knowledgeBase) {
-    return <AccessDeniedError onBack={handleBack} />
+    return (
+      <div className="flex h-screen items-center justify-center bg-base">
+        <div className="text-center">
+          <p className="text-text-muted mb-4">{error || t('chatPage.notFound')}</p>
+          <Button variant="outline" onClick={handleBack}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            {t('chatPage.backToList')}
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   // Determine the layout type (default to 'notebook' if not specified)
