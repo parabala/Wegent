@@ -501,18 +501,13 @@ class KnowledgeShareService(UnifiedShareService):
                     group_role = role_mapping.get(team_role, SchemaMemberRole.Reporter)
 
         # Determine final access level (higher of explicit vs group)
+        # Use ROLE_HIERARCHY from parent class for consistent role comparison
         # Role priority: Owner > Maintainer > Developer > Reporter > RestrictedAnalyst
-        role_priority = {
-            SchemaMemberRole.Owner: 5,
-            SchemaMemberRole.Maintainer: 4,
-            SchemaMemberRole.Developer: 3,
-            SchemaMemberRole.Reporter: 2,
-        }
 
         if has_explicit_access and group_role:
             # Take the higher permission
-            explicit_priority = role_priority.get(explicit_role, 0)
-            group_priority = role_priority.get(group_role, 0)
+            explicit_priority = self.ROLE_HIERARCHY.get(explicit_role.value, 0)
+            group_priority = self.ROLE_HIERARCHY.get(group_role.value, 0)
             final_role = (
                 explicit_role if explicit_priority >= group_priority else group_role
             )

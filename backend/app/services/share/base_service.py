@@ -655,6 +655,11 @@ class UnifiedShareService(ABC):
             role = (
                 requested_role.value if is_pending and requested_role else default_role
             )
+
+            # Security guard: Never grant Owner role via share link join
+            if role == ResourceRole.Owner.value:
+                role = ResourceRole.Reporter.value
+
             existing_member.set_role(role)
             existing_member.share_link_id = share_link.id
             existing_member.requested_at = datetime.utcnow()
@@ -682,6 +687,10 @@ class UnifiedShareService(ABC):
             role = (
                 requested_role.value if is_pending and requested_role else default_role
             )
+
+            # Security guard: Never grant Owner role via share link join
+            if role == ResourceRole.Owner.value:
+                role = ResourceRole.Reporter.value
 
             # Create member record
             # For PENDING status, use 0 as placeholder for reviewed_by_user_id
