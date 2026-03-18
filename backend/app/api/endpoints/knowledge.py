@@ -262,9 +262,16 @@ def get_knowledge_base(
             knowledge_base_id=knowledge_base_id,
         )
     except ValueError as e:
+        error_msg = str(e)
+        # Check if it's an access denied error
+        if "access denied" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=error_msg,
+            )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
+            detail=error_msg,
         )
 
 

@@ -8,6 +8,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { getKnowledgeBase } from '@/apis/knowledge'
+import { ApiError } from '@/apis/client'
 import type { KnowledgeBase } from '@/types/knowledge'
 
 interface UseKnowledgeBaseDetailOptions {
@@ -23,16 +24,23 @@ export function useKnowledgeBaseDetail(options: UseKnowledgeBaseDetailOptions) {
   // This prevents brief flash of error/empty state before the effect fires
   const [loading, setLoading] = useState(autoLoad && !!knowledgeBaseId)
   const [error, setError] = useState<string | null>(null)
+  // Track access denied state for 403 errors
+  const [accessDenied, setAccessDenied] = useState(false)
 
   const fetchKnowledgeBase = useCallback(async () => {
     if (!knowledgeBaseId) return
 
     setLoading(true)
     setError(null)
+    setAccessDenied(false)
     try {
       const data = await getKnowledgeBase(knowledgeBaseId)
       setKnowledgeBase(data)
     } catch (err) {
+      // Check if it's a 403 Forbidden error (access denied)
+      if (err instanceof ApiError && err.status === 403) {
+        setAccessDenied(true)
+      }
       setError(err instanceof Error ? err.message : 'Failed to fetch knowledge base')
     } finally {
       setLoading(false)
@@ -49,6 +57,7 @@ export function useKnowledgeBaseDetail(options: UseKnowledgeBaseDetailOptions) {
     knowledgeBase,
     loading,
     error,
+    accessDenied,
     refresh: fetchKnowledgeBase,
   }
 }

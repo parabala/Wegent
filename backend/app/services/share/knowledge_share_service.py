@@ -28,7 +28,10 @@ from app.schemas.share import (
     PendingRequestInfo,
 )
 from app.schemas.share import PermissionLevel as SchemaPermissionLevel
-from app.services.group_permission import get_effective_role_in_group
+from app.services.group_permission import (
+    get_effective_role_in_group,
+    is_restricted_analyst,
+)
 from app.services.knowledge.knowledge_service import _is_organization_namespace
 from app.services.share.base_service import UnifiedShareService
 from shared.telemetry.decorators import add_span_event, set_span_attribute, trace_sync
@@ -128,6 +131,14 @@ class KnowledgeShareService(UnifiedShareService):
             )
             role = get_effective_role_in_group(db, user_id, kb.namespace)
             if role is not None:
+                # Check if user is a Restricted Analyst
+                # Restricted Analysts cannot access knowledge base content
+                if is_restricted_analyst(db, user_id, kb.namespace):
+                    logger.warning(
+                        f"[_get_resource] User {user_id} is Restricted Analyst in group "
+                        f"'{kb.namespace}', blocking access to KB {resource_id}"
+                    )
+                    return None
                 logger.info(f"[_get_resource] User has team role: role={role}")
                 return kb
             logger.warning(
@@ -259,6 +270,14 @@ class KnowledgeShareService(UnifiedShareService):
         if kb.namespace != "default":
             group_role = get_effective_role_in_group(db, user_id, kb.namespace)
             if group_role is not None:
+                # Check if user is a Restricted Analyst
+                # Restricted Analysts cannot access knowledge base content
+                if is_restricted_analyst(db, user_id, kb.namespace):
+                    logger.warning(
+                        f"[get_user_kb_permission] User {user_id} is Restricted Analyst in group "
+                        f"'{kb.namespace}', denying access to KB {knowledge_base_id}"
+                    )
+                    return False, None, None, False
                 # Map group role to permission level
                 # Owner/Maintainer -> manage, Developer -> edit, Reporter -> view
                 role_mapping = {
@@ -467,24 +486,39 @@ class KnowledgeShareService(UnifiedShareService):
         elif kb.namespace != "default":
             team_role = get_effective_role_in_group(db, user_id, kb.namespace)
             if team_role is not None:
-                role_mapping = {
-                    "Owner": (
-                        SchemaMemberRole.MAINTAINER,
-                        SchemaPermissionLevel.MANAGE,
-                    ),
-                    "Maintainer": (
-                        SchemaMemberRole.MAINTAINER,
-                        SchemaPermissionLevel.MANAGE,
-                    ),
-                    "Developer": (
-                        SchemaMemberRole.DEVELOPER,
-                        SchemaPermissionLevel.EDIT,
-                    ),
-                    "Reporter": (SchemaMemberRole.REPORTER, SchemaPermissionLevel.VIEW),
-                }
-                group_role, group_level = role_mapping.get(
-                    team_role, (SchemaMemberRole.REPORTER, SchemaPermissionLevel.VIEW)
-                )
+                # Check if user is a Restricted Analyst
+                # Restricted Analysts cannot access knowledge base content
+                if is_restricted_analyst(db, user_id, kb.namespace):
+                    logger.warning(
+                        f"[get_my_permission] User {user_id} is Restricted Analyst in group "
+                        f"'{kb.namespace}', denying access to KB {knowledge_base_id}"
+                    )
+                    # Restricted Analysts get no group permission
+                    group_role = None
+                    group_level = None
+                else:
+                    role_mapping = {
+                        "Owner": (
+                            SchemaMemberRole.MAINTAINER,
+                            SchemaPermissionLevel.MANAGE,
+                        ),
+                        "Maintainer": (
+                            SchemaMemberRole.MAINTAINER,
+                            SchemaPermissionLevel.MANAGE,
+                        ),
+                        "Developer": (
+                            SchemaMemberRole.DEVELOPER,
+                            SchemaPermissionLevel.EDIT,
+                        ),
+                        "Reporter": (
+                            SchemaMemberRole.REPORTER,
+                            SchemaPermissionLevel.VIEW,
+                        ),
+                    }
+                    group_role, group_level = role_mapping.get(
+                        team_role,
+                        (SchemaMemberRole.REPORTER, SchemaPermissionLevel.VIEW),
+                    )
 
         # Determine final access level (higher of explicit vs group)
         if has_explicit_access and group_level:
