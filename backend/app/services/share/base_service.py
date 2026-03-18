@@ -1311,6 +1311,8 @@ class UnifiedShareService(ABC):
             MemberStatus.APPROVED.value.upper(),
         ]
 
+        from sqlalchemy import case
+
         member = (
             db.query(ResourceMember)
             .filter(
@@ -1318,6 +1320,14 @@ class UnifiedShareService(ABC):
                 ResourceMember.resource_id == resource_id,
                 ResourceMember.user_id == user_id,
                 ResourceMember.status.in_(approved_status_variants),
+            )
+            .order_by(
+                # Prefer canonical resource_type, then most recent updated_at
+                case(
+                    (ResourceMember.resource_type == self.resource_type.value, 1),
+                    else_=0,
+                ).desc(),
+                ResourceMember.updated_at.desc(),
             )
             .first()
         )
@@ -1347,6 +1357,8 @@ class UnifiedShareService(ABC):
             MemberStatus.APPROVED.value.upper(),
         ]
 
+        from sqlalchemy import case
+
         member = (
             db.query(ResourceMember)
             .filter(
@@ -1354,6 +1366,14 @@ class UnifiedShareService(ABC):
                 ResourceMember.resource_id == resource_id,
                 ResourceMember.user_id == user_id,
                 ResourceMember.status.in_(approved_status_variants),
+            )
+            .order_by(
+                # Prefer canonical resource_type, then most recent updated_at
+                case(
+                    (ResourceMember.resource_type == self.resource_type.value, 1),
+                    else_=0,
+                ).desc(),
+                ResourceMember.updated_at.desc(),
             )
             .first()
         )

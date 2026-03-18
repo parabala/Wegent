@@ -59,14 +59,6 @@ export function AddUserForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Owner">
-                <div>
-                  <div className="font-medium">{t('document.permission.role.Owner')}</div>
-                  <div className="text-xs text-text-muted">
-                    {t('document.permission.role.OwnerDescription')}
-                  </div>
-                </div>
-              </SelectItem>
               <SelectItem value="Maintainer">
                 <div>
                   <div className="font-medium">{t('document.permission.role.Maintainer')}</div>

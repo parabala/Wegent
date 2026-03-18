@@ -155,7 +155,7 @@ class KnowledgeShareService(UnifiedShareService):
                 # RestrictedAnalyst is not allowed to access knowledge base details
                 if role == GroupRole.RestrictedAnalyst:
                     logger.warning(
-                        f"[_get_resource] User has team role but is RestrictedAnalyst"
+                        "[_get_resource] User has team role but is RestrictedAnalyst"
                     )
                     return None
                 logger.info(f"[_get_resource] User has team role: role={role}")

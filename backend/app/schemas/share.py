@@ -12,7 +12,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.share_link import ResourceType
 from app.schemas.namespace import GroupRole
@@ -28,8 +28,6 @@ class MemberStatus(str, Enum):
 
 # Alias for backward compatibility - use GroupRole directly
 MemberRole = GroupRole
-# Exclude Owner for requests where Owner cannot be assigned via API
-MemberRoleNoOwner = GroupRole
 
 
 # =============================================================================
@@ -43,14 +41,22 @@ class ShareLinkConfig(BaseModel):
     require_approval: bool = Field(
         default=True, description="Whether joining requires approval"
     )
-    default_role: MemberRoleNoOwner = Field(
-        default=MemberRoleNoOwner.Reporter, description="Default role for joiners"
+    default_role: MemberRole = Field(
+        default=MemberRole.Reporter, description="Default role for joiners"
     )
     expires_in_hours: Optional[int] = Field(
         default=None,
         description="Hours until link expires (None = never expires)",
         ge=1,
     )
+
+    @field_validator("default_role")
+    @classmethod
+    def validate_default_role(cls, v: MemberRole) -> MemberRole:
+        """Validate that Owner role cannot be assigned via API."""
+        if v == MemberRole.Owner:
+            raise ValueError("Owner role cannot be assigned via API")
+        return v
 
 
 class ShareLinkCreate(BaseModel):
@@ -67,7 +73,7 @@ class ShareLinkUpdate(BaseModel):
     require_approval: Optional[bool] = Field(
         default=None, description="Whether joining requires approval"
     )
-    default_role: Optional[MemberRoleNoOwner] = Field(
+    default_role: Optional[MemberRole] = Field(
         default=None, description="Default role for joiners"
     )
     expires_in_hours: Optional[int] = Field(
@@ -76,6 +82,14 @@ class ShareLinkUpdate(BaseModel):
     is_active: Optional[bool] = Field(
         default=None, description="Whether the link is active"
     )
+
+    @field_validator("default_role")
+    @classmethod
+    def validate_default_role(cls, v: Optional[MemberRole]) -> Optional[MemberRole]:
+        """Validate that Owner role cannot be assigned via API."""
+        if v == MemberRole.Owner:
+            raise ValueError("Owner role cannot be assigned via API")
+        return v
 
 
 class ShareLinkResponse(BaseModel):
@@ -124,18 +138,34 @@ class ResourceMemberCreate(BaseModel):
     """Request body for adding a member directly."""
 
     user_id: int = Field(description="User ID to add as member")
-    role: MemberRoleNoOwner = Field(
-        default=MemberRoleNoOwner.Reporter,
+    role: MemberRole = Field(
+        default=MemberRole.Reporter,
         description="Member role (Owner not allowed)",
     )
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: MemberRole) -> MemberRole:
+        """Validate that Owner role cannot be assigned via API."""
+        if v == MemberRole.Owner:
+            raise ValueError("Owner role cannot be assigned via API")
+        return v
 
 
 class ResourceMemberUpdate(BaseModel):
     """Request body for updating member permissions."""
 
-    role: Optional[MemberRoleNoOwner] = Field(
+    role: Optional[MemberRole] = Field(
         default=None, description="New member role (Owner not allowed)"
     )
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: Optional[MemberRole]) -> Optional[MemberRole]:
+        """Validate that Owner role cannot be assigned via API."""
+        if v == MemberRole.Owner:
+            raise ValueError("Owner role cannot be assigned via API")
+        return v
 
 
 class ResourceMemberResponse(BaseModel):
@@ -199,9 +229,17 @@ class JoinByLinkRequest(BaseModel):
     """Request body for joining via share link."""
 
     share_token: str = Field(description="Share token from URL")
-    requested_role: Optional[MemberRoleNoOwner] = Field(
+    requested_role: Optional[MemberRole] = Field(
         default=None, description="Requested role (optional, Owner not allowed)"
     )
+
+    @field_validator("requested_role")
+    @classmethod
+    def validate_requested_role(cls, v: Optional[MemberRole]) -> Optional[MemberRole]:
+        """Validate that Owner role cannot be assigned via API."""
+        if v == MemberRole.Owner:
+            raise ValueError("Owner role cannot be assigned via API")
+        return v
 
 
 class JoinByLinkResponse(BaseModel):
@@ -244,10 +282,18 @@ class ReviewRequestBody(BaseModel):
     """Request body for reviewing a join request."""
 
     approved: bool = Field(description="Whether to approve the request")
-    role: Optional[MemberRoleNoOwner] = Field(
+    role: Optional[MemberRole] = Field(
         default=None,
         description="Role to grant (only for approval, defaults to requested role, Owner not allowed)",
     )
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: Optional[MemberRole]) -> Optional[MemberRole]:
+        """Validate that Owner role cannot be assigned via API."""
+        if v == MemberRole.Owner:
+            raise ValueError("Owner role cannot be assigned via API")
+        return v
 
 
 class ReviewRequestResponse(BaseModel):

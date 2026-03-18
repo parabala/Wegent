@@ -198,7 +198,6 @@ export function PermissionManagementTab({ kbId }: PermissionManagementTabProps) 
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Owner">{t('document.permission.role.Owner')}</SelectItem>
                       <SelectItem value="Maintainer">
                         {t('document.permission.role.Maintainer')}
                       </SelectItem>
@@ -401,7 +400,6 @@ function PermissionGroup({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Owner">{t('document.permission.role.Owner')}</SelectItem>
                     <SelectItem value="Maintainer">
                       {t('document.permission.role.Maintainer')}
                     </SelectItem>
