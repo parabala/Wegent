@@ -6,11 +6,11 @@
  * Knowledge base and document related types
  */
 
-// Import GroupRole at the top for use throughout the file
-import type { GroupRole } from './group'
+// Import BaseRole and related utilities from base-role module
+import type { BaseRole } from './base-role'
 
-// Re-export GroupRole as MemberRole for backward compatibility
-export type MemberRole = GroupRole
+// Re-export MemberRole as backward compatible alias
+export type MemberRole = BaseRole
 
 export type DocumentStatus = 'enabled' | 'disabled'
 
@@ -330,32 +330,8 @@ export interface ChunkListResponse {
 export type PermissionStatus = 'pending' | 'approved' | 'rejected'
 export type ReviewAction = 'approve' | 'reject'
 
-// Role display names (Chinese) - using GroupRole
-export const ROLE_DISPLAY_NAMES: Record<GroupRole, string> = {
-  Owner: '创建者',
-  Maintainer: '管理员',
-  Developer: '开发者',
-  Reporter: '使用者',
-  RestrictedAnalyst: '盲分析师',
-}
-
-// Role display names (English) - using GroupRole
-export const ROLE_DISPLAY_NAMES_EN: Record<GroupRole, string> = {
-  Owner: 'Owner',
-  Maintainer: 'Maintainer',
-  Developer: 'Developer',
-  Reporter: 'Reporter',
-  RestrictedAnalyst: 'Restricted Analyst',
-}
-
-// Role hierarchy for comparison (higher = more permissions) - using GroupRole
-export const ROLE_HIERARCHY: Record<GroupRole, number> = {
-  Owner: 5,
-  Maintainer: 4,
-  Developer: 3,
-  Reporter: 2,
-  RestrictedAnalyst: 1,
-}
+// Note: ROLE_DISPLAY_NAMES, ROLE_DISPLAY_NAMES_EN, and ROLE_HIERARCHY
+// are now defined in ./base-role.ts and should be imported from there
 
 // Permission Apply types
 export interface PermissionApplyRequest {

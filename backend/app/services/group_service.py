@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.kind import Kind
 from app.models.namespace import Namespace
 from app.models.resource_member import MemberStatus, ResourceMember
+from app.schemas.base_role import has_permission
 from app.schemas.namespace import (
     GroupCreate,
     GroupLevel,
@@ -111,18 +112,9 @@ def create_group(
         # Check if user has permission to create subgroups (must be at least Maintainer)
         # Use effective role to support inheritance
         user_group_role = get_effective_role_in_group(db, owner_user_id, parent_name)
-        role_hierarchy = {
-            GroupRole.Owner: 0,
-            GroupRole.Maintainer: 1,
-            GroupRole.Developer: 2,
-            GroupRole.Reporter: 3,
-            GroupRole.RestrictedAnalyst: 4,
-        }
 
-        if (
-            user_group_role is None
-            or role_hierarchy.get(user_group_role, 999)
-            > role_hierarchy[GroupRole.Maintainer]
+        if user_group_role is None or not has_permission(
+            user_group_role, GroupRole.Maintainer
         ):
             raise HTTPException(
                 status_code=403,
@@ -546,14 +538,6 @@ def remove_member(
     remover_role = get_user_role_in_group(db, removed_by_user_id, group_name)
     target_role = GroupRole(member.role)
 
-    role_hierarchy = {
-        GroupRole.Owner: 0,
-        GroupRole.Maintainer: 1,
-        GroupRole.Developer: 2,
-        GroupRole.Reporter: 3,
-        GroupRole.RestrictedAnalyst: 4,
-    }
-
     # Allow self-removal
     if removed_by_user_id != user_id:
         # Check if remover has sufficient permissions
@@ -563,7 +547,8 @@ def remove_member(
                 detail="You are not a member of this group",
             )
 
-        if role_hierarchy[remover_role] >= role_hierarchy[target_role]:
+        # Remover must have higher permission than target (not equal or lower)
+        if not has_permission(remover_role, target_role) or remover_role == target_role:
             raise HTTPException(
                 status_code=403,
                 detail="Insufficient permissions to remove this member",

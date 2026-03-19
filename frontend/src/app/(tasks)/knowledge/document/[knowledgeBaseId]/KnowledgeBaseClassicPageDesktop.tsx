@@ -29,7 +29,7 @@ import { useKnowledgePermissions } from '@/features/knowledge/permission/hooks/u
 import { DocumentList } from '@/features/knowledge/document/components'
 import { PermissionManagementTab } from '@/features/knowledge/permission/components/PermissionManagementTab'
 import { listGroups } from '@/apis/groups'
-import type { GroupRole } from '@/types/group'
+import type { BaseRole } from '@/types/base-role'
 interface KnowledgeBaseClassicPageDesktopProps {
   /** Callback when knowledge base type is changed (notebook <-> classic) */
   onKbTypeChanged?: () => void
@@ -95,13 +95,13 @@ export function KnowledgeBaseClassicPageDesktop({
   const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false)
 
   // Group role map for permission checking
-  const [groupRoleMap, setGroupRoleMap] = useState<Map<string, GroupRole>>(new Map())
+  const [groupRoleMap, setGroupRoleMap] = useState<Map<string, BaseRole>>(new Map())
 
   // Fetch all groups and build role map for permission checking
   useEffect(() => {
     listGroups()
       .then(response => {
-        const roleMap = new Map<string, GroupRole>()
+        const roleMap = new Map<string, BaseRole>()
         response.items.forEach(group => {
           if (group.my_role) {
             roleMap.set(group.name, group.my_role)

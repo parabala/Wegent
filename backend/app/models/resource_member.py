@@ -30,7 +30,7 @@ from sqlalchemy.sql import func
 
 from app.db.base import Base
 from app.models.share_link import ResourceType
-from app.schemas.namespace import GroupRole
+from app.schemas.base_role import BaseRole
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -48,8 +48,9 @@ class MemberStatus(str, PyEnum):
     REJECTED = "rejected"  # Access denied
 
 
-# Use GroupRole for unified role definition
-ResourceRole = GroupRole
+# ResourceRole is an alias to BaseRole for backward compatibility
+# All role-related code should use BaseRole as the single source of truth
+ResourceRole = BaseRole
 
 
 class ResourceMember(Base):

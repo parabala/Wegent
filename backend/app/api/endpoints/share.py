@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_db
 from app.core import security
 from app.models.user import User
-from app.schemas.namespace import GroupRole
 from app.schemas.share import (
     JoinByLinkRequest,
     JoinByLinkResponse,
@@ -39,9 +38,6 @@ from app.schemas.share import (
     ShareLinkResponse,
     ShareLinkUpdate,
 )
-
-# Alias for backward compatibility
-MemberRole = GroupRole
 from app.services.share import (
     knowledge_share_service,
     task_share_service,

@@ -20,9 +20,7 @@ import { useTranslation } from '@/hooks/useTranslation'
 import { useKnowledgePermissions } from '../hooks/useKnowledgePermissions'
 import { AddUserDialog } from './add-user-dialog'
 import type { MemberRole, PendingPermissionInfo, PermissionUserInfo } from '@/types/knowledge'
-
-// Assignable roles for permission management (excludes Owner)
-const ASSIGNABLE_ROLES: MemberRole[] = ['Maintainer', 'Developer', 'Reporter', 'RestrictedAnalyst']
+import { ASSIGNABLE_ROLES } from '@/types/base-role'
 
 interface PermissionManagementTabProps {
   kbId: number

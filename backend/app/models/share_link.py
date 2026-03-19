@@ -25,11 +25,12 @@ class ResourceType(str, PyEnum):
     KNOWLEDGE_BASE = "KnowledgeBase"
 
 
-# Import GroupRole from namespace schema for consistency
-from app.schemas.namespace import GroupRole
+# Import BaseRole and create MemberRole alias for backward compatibility
+from app.schemas.base_role import BaseRole
 
-# Keep MemberRole as alias for backward compatibility
-MemberRole = GroupRole
+# MemberRole is an alias to BaseRole for backward compatibility
+# All role-related code should use BaseRole as the single source of truth
+MemberRole = BaseRole
 
 
 class ShareLink(Base):

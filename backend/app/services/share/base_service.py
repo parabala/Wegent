@@ -26,7 +26,7 @@ from app.core.config import settings
 from app.models.resource_member import MemberStatus, ResourceMember, ResourceRole
 from app.models.share_link import ResourceType, ShareLink
 from app.models.user import User
-from app.schemas.namespace import GroupRole
+from app.schemas.base_role import BaseRole, has_permission
 from app.schemas.share import (
     JoinByLinkResponse,
     MemberListResponse,
@@ -42,8 +42,9 @@ from app.schemas.share import (
     ShareLinkResponse,
 )
 
-# Alias for backward compatibility
-SchemaMemberRole = GroupRole
+# SchemaMemberRole is an alias to BaseRole for backward compatibility
+# All role-related code should use BaseRole as the single source of truth
+SchemaMemberRole = BaseRole
 
 logger = logging.getLogger(__name__)
 
@@ -65,16 +66,6 @@ class UnifiedShareService(ABC):
     - _get_share_url_base(): Get base URL for share links
     - _on_member_approved(): Hook called when member is approved
     """
-
-    # Role hierarchy for comparison
-    # Higher number = higher permission
-    ROLE_HIERARCHY: Dict[str, int] = {
-        ResourceRole.RestrictedAnalyst.value: 1,
-        ResourceRole.Reporter.value: 2,
-        ResourceRole.Developer.value: 3,
-        ResourceRole.Maintainer.value: 4,
-        ResourceRole.Owner.value: 5,
-    }
 
     def __init__(self, resource_type: ResourceType):
         """Initialize the share service for a specific resource type."""
@@ -1346,10 +1337,7 @@ class UnifiedShareService(ABC):
 
         # Use effective role for permission check
         effective_role = member.get_effective_role()
-        actual_level = self.ROLE_HIERARCHY.get(effective_role, 0)
-        required = self.ROLE_HIERARCHY.get(required_role.value, 0)
-
-        return actual_level >= required
+        return has_permission(effective_role, required_role.value)
 
     def get_user_role(
         self, db: Session, resource_id: int, user_id: int

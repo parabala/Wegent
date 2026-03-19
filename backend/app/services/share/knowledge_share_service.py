@@ -19,15 +19,16 @@ from app.models.kind import Kind
 from app.models.resource_member import MemberStatus, ResourceMember, ResourceRole
 from app.models.share_link import ResourceType, ShareLink
 from app.models.user import User
-from app.schemas.namespace import GroupRole
+from app.schemas.base_role import BaseRole, has_permission
 from app.schemas.share import (
     KBShareInfoResponse,
     MyKBPermissionResponse,
     PendingRequestInfo,
 )
 
-# Alias for backward compatibility
-SchemaMemberRole = GroupRole
+# SchemaMemberRole is an alias to BaseRole for backward compatibility
+# All role-related code should use BaseRole as the single source of truth
+SchemaMemberRole = BaseRole
 from app.services.group_permission import (
     get_effective_role_in_group,
     is_restricted_analyst,
@@ -501,16 +502,19 @@ class KnowledgeShareService(UnifiedShareService):
                     group_role = role_mapping.get(team_role, SchemaMemberRole.Reporter)
 
         # Determine final access level (higher of explicit vs group)
-        # Use ROLE_HIERARCHY from parent class for consistent role comparison
+        # Use has_permission() for consistent role comparison
         # Role priority: Owner > Maintainer > Developer > Reporter > RestrictedAnalyst
 
         if has_explicit_access and group_role:
-            # Take the higher permission
-            explicit_priority = self.ROLE_HIERARCHY.get(explicit_role.value, 0)
-            group_priority = self.ROLE_HIERARCHY.get(group_role.value, 0)
-            final_role = (
-                explicit_role if explicit_priority >= group_priority else group_role
-            )
+            # Take the higher permission using has_permission
+            # has_permission(user_role, required_role) returns True if user_role >= required_role
+            # So we check which role has permission over the other
+            if has_permission(explicit_role.value, group_role.value):
+                # explicit_role is higher or equal
+                final_role = explicit_role
+            else:
+                # group_role is higher
+                final_role = group_role
             return MyKBPermissionResponse(
                 has_access=True,
                 role=final_role,

@@ -15,7 +15,13 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.share_link import ResourceType
-from app.schemas.namespace import GroupRole
+
+# Import BaseRole and create MemberRole alias for backward compatibility
+from app.schemas.base_role import BaseRole
+
+# MemberRole is an alias to BaseRole for backward compatibility
+# All role-related code should use BaseRole as the single source of truth
+MemberRole = BaseRole
 
 
 class MemberStatus(str, Enum):
@@ -24,10 +30,6 @@ class MemberStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
-
-
-# Alias for backward compatibility - use GroupRole directly
-MemberRole = GroupRole
 
 
 # =============================================================================

@@ -7,6 +7,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.namespace import Namespace
+from app.schemas.base_role import has_permission
 from app.schemas.namespace import GroupRole
 from app.services.group_member_helper import (
     NAMESPACE_RESOURCE_TYPE,
@@ -59,22 +60,13 @@ def check_group_permission(
     Returns:
         True if user has permission, False otherwise
     """
-    # Define role hierarchy (lower number = higher permission)
-    role_hierarchy = {
-        GroupRole.Owner: 0,
-        GroupRole.Maintainer: 1,
-        GroupRole.Developer: 2,
-        GroupRole.Reporter: 3,
-        GroupRole.RestrictedAnalyst: 4,
-    }
-
     user_role = get_user_role_in_group(db, user_id, group_name)
 
     if user_role is None:
         return False
 
-    # Check if user's role level is equal or higher than required
-    return role_hierarchy[user_role] <= role_hierarchy[required_role]
+    # Use shared has_permission function from base_role
+    return has_permission(user_role, required_role)
 
 
 def get_user_groups(db: Session, user_id: int) -> list[str]:
