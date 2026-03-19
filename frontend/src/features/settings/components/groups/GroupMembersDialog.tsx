@@ -302,7 +302,9 @@ export function GroupMembersDialog({
                   onValueChange={(value: GroupRole) => setSelectedRole(value)}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder={t(`groups:groups.roles.${selectedRole}`)}>
+                      {t(`groups:groups.roles.${selectedRole}`)}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {myRole === 'Owner' && (
@@ -483,62 +485,27 @@ export function GroupMembersDialog({
                         </td>
                         <td className="px-4 py-3 text-sm">
                           {canUpdateRole && !isMe && !(myRole === 'Maintainer' && memberIsOwner) ? (
-                            <Select
+                            <select
                               value={member.role}
-                              onValueChange={(value: GroupRole) =>
-                                handleUpdateRole(member.user_id, value)
+                              onChange={e =>
+                                handleUpdateRole(member.user_id, e.target.value as GroupRole)
                               }
+                              className="h-8 px-2 text-sm rounded-md border border-border bg-surface"
                             >
-                              <SelectTrigger className="w-[140px]">
-                                <Badge variant={getRoleBadgeVariant(member.role)}>
-                                  {t(`groups:groups.roles.${member.role}`)}
-                                </Badge>
-                              </SelectTrigger>
-                              <SelectContent>
-                                {myRole === 'Owner' && (
-                                  <SelectItem value="Owner">
-                                    <div className="flex flex-col">
-                                      <span>{t('groups:groups.roles.Owner')}</span>
-                                      <span className="text-xs text-text-muted">
-                                        {t('groups:groupMembers.roleDescriptions.Owner')}
-                                      </span>
-                                    </div>
-                                  </SelectItem>
-                                )}
-                                <SelectItem value="Maintainer">
-                                  <div className="flex flex-col">
-                                    <span>{t('groups:groups.roles.Maintainer')}</span>
-                                    <span className="text-xs text-text-muted">
-                                      {t('groups:groupMembers.roleDescriptions.Maintainer')}
-                                    </span>
-                                  </div>
-                                </SelectItem>
-                                <SelectItem value="Developer">
-                                  <div className="flex flex-col">
-                                    <span>{t('groups:groups.roles.Developer')}</span>
-                                    <span className="text-xs text-text-muted">
-                                      {t('groups:groupMembers.roleDescriptions.Developer')}
-                                    </span>
-                                  </div>
-                                </SelectItem>
-                                <SelectItem value="Reporter">
-                                  <div className="flex flex-col">
-                                    <span>{t('groups:groups.roles.Reporter')}</span>
-                                    <span className="text-xs text-text-muted">
-                                      {t('groups:groupMembers.roleDescriptions.Reporter')}
-                                    </span>
-                                  </div>
-                                </SelectItem>
-                                <SelectItem value="RestrictedAnalyst">
-                                  <div className="flex flex-col">
-                                    <span>{t('groups:groups.roles.RestrictedAnalyst')}</span>
-                                    <span className="text-xs text-text-muted">
-                                      {t('groups:groupMembers.roleDescriptions.RestrictedAnalyst')}
-                                    </span>
-                                  </div>
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
+                              {myRole === 'Owner' && (
+                                <option value="Owner">{t('groups:groups.roles.Owner')}</option>
+                              )}
+                              <option value="Maintainer">
+                                {t('groups:groups.roles.Maintainer')}
+                              </option>
+                              <option value="Developer">
+                                {t('groups:groups.roles.Developer')}
+                              </option>
+                              <option value="Reporter">{t('groups:groups.roles.Reporter')}</option>
+                              <option value="RestrictedAnalyst">
+                                {t('groups:groups.roles.RestrictedAnalyst')}
+                              </option>
+                            </select>
                           ) : (
                             <Badge variant={getRoleBadgeVariant(member.role)}>
                               {t(`groups:groups.roles.${member.role}`)}
