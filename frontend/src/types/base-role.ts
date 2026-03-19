@@ -159,9 +159,10 @@ export function canDelete(role: BaseRole | null | undefined): boolean {
 /**
  * Check if a user can leave a group/resource
  * Owner cannot leave (must transfer ownership first)
+ * Missing role fails closed (returns false)
  */
 export function canLeave(role: BaseRole | null | undefined): boolean {
-  return role !== 'Owner'
+  return !!role && role !== 'Owner'
 }
 
 /**
