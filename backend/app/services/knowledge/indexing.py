@@ -41,8 +41,6 @@ from shared.telemetry import add_span_event
 
 logger = logging.getLogger(__name__)
 
-RAG_INDEXING_DISABLED_EXTENSIONS = frozenset()
-
 # Excel file size limit for RAG indexing (2MB)
 EXCEL_FILE_SIZE_LIMIT = 2 * 1024 * 1024  # 2MB in bytes
 EXCEL_EXTENSIONS = frozenset({".xls", ".xlsx"})
@@ -109,9 +107,6 @@ def get_rag_indexing_skip_reason(
         return (
             "Table documents are queried in real-time and do not support RAG indexing"
         )
-
-    if normalized_extension in RAG_INDEXING_DISABLED_EXTENSIONS:
-        return f"Documents with extension ({normalized_extension}) are excluded from RAG indexing"
 
     # Check Excel file size limit (2MB)
     if normalized_extension in EXCEL_EXTENSIONS:
