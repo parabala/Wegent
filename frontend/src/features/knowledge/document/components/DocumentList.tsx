@@ -395,10 +395,30 @@ export function DocumentList({
           refresh()
         }
       }, 2000)
-    } catch {
+    } catch (err) {
+      // Parse error message and use i18n translation if it's a known error code
+      let errorMessage = t('document.document.reindexFailed')
+      if (err instanceof Error) {
+        const message = err.message
+        // Check if it's an EXCEL_FILE_SIZE_EXCEEDED error code
+        // Format: EXCEL_FILE_SIZE_EXCEEDED|extension|limit|size
+        if (message.startsWith('EXCEL_FILE_SIZE_EXCEEDED|')) {
+          const parts = message.split('|')
+          if (parts.length === 4) {
+            errorMessage = t('document.document.excelFileSizeExceeded', {
+              extension: parts[1],
+              limit: parts[2],
+              size: parts[3],
+            })
+          }
+        } else {
+          // Use the original error message for other errors
+          errorMessage = message
+        }
+      }
       toast({
         variant: 'destructive',
-        description: t('document.document.reindexFailed'),
+        description: errorMessage,
       })
     } finally {
       if (isMountedRef.current) {
