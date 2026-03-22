@@ -396,14 +396,14 @@ export function DocumentList({
         }
       }, 2000)
     } catch (err) {
-      // Parse error message and use i18n translation if it's a known error code
+      // Use ApiError.errorCode for structured error handling
       let errorMessage = t('document.document.reindexFailed')
       if (err instanceof Error) {
-        const message = err.message
-        // Check if it's an EXCEL_FILE_SIZE_EXCEEDED error code
-        // Format: EXCEL_FILE_SIZE_EXCEEDED|extension|limit|size
-        if (message.startsWith('EXCEL_FILE_SIZE_EXCEEDED|')) {
-          const parts = message.split('|')
+        // Check if it's an ApiError with errorCode for structured error handling
+        const apiError = err as { errorCode?: string; message: string }
+        if (apiError.errorCode === 'EXCEL_FILE_SIZE_EXCEEDED') {
+          // Format: EXCEL_FILE_SIZE_EXCEEDED|extension|limit|size
+          const parts = apiError.message.split('|')
           if (parts.length === 4) {
             errorMessage = t('document.document.excelFileSizeExceeded', {
               extension: parts[1],
@@ -413,7 +413,7 @@ export function DocumentList({
           }
         } else {
           // Use the original error message for other errors
-          errorMessage = message
+          errorMessage = apiError.message
         }
       }
       toast({
