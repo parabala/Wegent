@@ -8,7 +8,7 @@ Service for task knowledge base (group chat) binding management.
 
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -115,6 +115,23 @@ class TaskKnowledgeBaseService:
         if not kb:
             return False
 
+        # Use the extracted permission check logic
+        return self._check_kb_access_permission(db, user_id, kb)
+
+    def _check_kb_access_permission(self, db: Session, user_id: int, kb: Kind) -> bool:
+        """Check if user has access to a knowledge base.
+
+        This is the core permission checking logic extracted for reuse.
+        It checks access based on KB type (personal, organization, team).
+
+        Args:
+            db: Database session
+            user_id: User ID
+            kb: Knowledge base Kind object (already fetched from DB)
+
+        Returns:
+            True if user has access to the knowledge base
+        """
         # For personal knowledge base (default namespace)
         if kb.namespace == "default":
             # Creator always has access
@@ -263,6 +280,48 @@ class TaskKnowledgeBaseService:
             )
             .first()
         )
+
+    def batch_get_knowledge_base_by_names(
+        self, db: Session, namespace: str, names: List[str]
+    ) -> Dict[str, Kind]:
+        """Batch get knowledge bases by display names in a namespace.
+
+        This method performs a single database query to get all knowledge bases
+        in the specified namespace, then filters by display name in memory.
+        This is more efficient than querying for each name individually.
+
+        Args:
+            db: Database session
+            namespace: Knowledge base namespace
+            names: List of knowledge base display names (spec.name)
+
+        Returns:
+            Dictionary mapping display name to Kind object
+        """
+        if not names:
+            return {}
+
+        # Query all active KBs in this namespace (single DB query)
+        namespace_kbs = (
+            db.query(Kind)
+            .filter(
+                Kind.kind == "KnowledgeBase",
+                Kind.namespace == namespace,
+                Kind.is_active == True,
+            )
+            .all()
+        )
+
+        # Build display_name -> KB mapping
+        result: Dict[str, Kind] = {}
+        name_set = set(names)
+        for kb in namespace_kbs:
+            kb_spec = kb.json.get("spec", {}) if kb.json else {}
+            display_name = kb_spec.get("name")
+            if display_name and display_name in name_set:
+                result[display_name] = kb
+
+        return result
 
     def get_knowledge_bases_by_ids(
         self, db: Session, kb_ids: List[int]

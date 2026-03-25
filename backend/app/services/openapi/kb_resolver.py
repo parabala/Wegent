@@ -61,6 +61,38 @@ class KnowledgeBaseNameResolver:
         self.user_id = user_id
         self.kb_service = TaskKnowledgeBaseService()
 
+    def _batch_query_kbs(
+        self, namespace_groups: Dict[str, List[Dict]]
+    ) -> Dict[tuple[str, str], Kind]:
+        """
+        Batch query knowledge bases by namespace.
+
+        This method uses TaskKnowledgeBaseService.batch_get_knowledge_base_by_names
+        to perform efficient batch queries per namespace.
+
+        Args:
+            namespace_groups: Dict mapping namespace to list of KB refs
+
+        Returns:
+            Dict mapping (namespace, display_name) to Kind object
+        """
+        kb_lookup: Dict[tuple[str, str], Kind] = {}
+
+        for namespace, refs in namespace_groups.items():
+            # Extract names for this namespace
+            names = [ref.get("name", "") for ref in refs if ref.get("name")]
+
+            # Use service method for batch query
+            kb_map = self.kb_service.batch_get_knowledge_base_by_names(
+                self.db, namespace, names
+            )
+
+            # Convert to (namespace, name) -> KB lookup
+            for name, kb in kb_map.items():
+                kb_lookup[(namespace, name)] = kb
+
+        return kb_lookup
+
     def resolve(
         self,
         kb_names: List[Dict[str, str]],
@@ -68,6 +100,12 @@ class KnowledgeBaseNameResolver:
     ) -> KnowledgeBaseResolutionResult:
         """
         Resolve a list of knowledge base names to IDs.
+
+        This method uses batch queries to minimize database round-trips:
+        1. Groups KB refs by namespace
+        2. Queries each namespace once to get all KBs
+        3. Matches names in memory
+        4. Performs permission checks using cached KB objects
 
         Args:
             kb_names: List of dicts with 'namespace' and 'name' keys
@@ -84,6 +122,15 @@ class KnowledgeBaseNameResolver:
         not_found: List[Dict[str, str]] = []
         no_access: List[Dict[str, str]] = []
 
+        if not kb_names:
+            return KnowledgeBaseResolutionResult(
+                resolved=resolved,
+                not_found=not_found,
+                no_access=no_access,
+            )
+
+        # Step 1: Group KB refs by namespace for batch querying
+        namespace_groups: Dict[str, List[Dict]] = {}
         for kb_ref in kb_names:
             namespace = kb_ref.get("namespace", "default")
             name = kb_ref.get("name", "")
@@ -96,8 +143,24 @@ class KnowledgeBaseNameResolver:
                 not_found.append(kb_ref)
                 continue
 
-            # Look up the knowledge base by display name
-            kb = self.kb_service.get_knowledge_base_by_name(self.db, name, namespace)
+            if namespace not in namespace_groups:
+                namespace_groups[namespace] = []
+            namespace_groups[namespace].append(kb_ref)
+
+        # Step 2: Batch query KBs by namespace and build lookup map
+        kb_lookup = self._batch_query_kbs(namespace_groups)
+
+        # Step 3: Resolve each KB ref and check permissions
+        for kb_ref in kb_names:
+            namespace = kb_ref.get("namespace", "default")
+            name = kb_ref.get("name", "")
+
+            if not name:
+                # Already handled in step 1
+                continue
+
+            # Look up KB from cached results
+            kb = kb_lookup.get((namespace, name))
 
             if not kb:
                 logger.warning(
@@ -108,9 +171,9 @@ class KnowledgeBaseNameResolver:
                 not_found.append(kb_ref)
                 continue
 
-            # Check user access permission
-            if not self.kb_service.can_access_knowledge_base(
-                self.db, self.user_id, name, namespace
+            # Check user access permission using cached KB object
+            if not self.kb_service._check_kb_access_permission(
+                self.db, self.user_id, kb
             ):
                 logger.warning(
                     "[KBResolver] User %s has no access to KB: namespace=%s, name=%s",
