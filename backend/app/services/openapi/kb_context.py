@@ -128,7 +128,6 @@ class KnowledgeBaseContextCreator:
             name=kb.display_name,
             status=ContextStatus.READY.value,
             type_data=type_data,
-            knowledge_id=kb.kb_id,
         )
 
         logger.debug(
@@ -139,25 +138,3 @@ class KnowledgeBaseContextCreator:
         )
 
         return context
-
-
-def create_kb_contexts_for_subtask(
-    db: Session,
-    user_id: int,
-    subtask_id: int,
-    kb_names: List[dict],
-) -> List[SubtaskContext]:
-    """
-    Convenience function to create KB contexts for a subtask.
-
-    Args:
-        db: Database session
-        user_id: ID of the user creating the contexts
-        subtask_id: ID of the subtask to attach contexts to
-        kb_names: List of dicts with 'namespace' and 'name' keys
-
-    Returns:
-        List of created SubtaskContext records
-    """
-    creator = KnowledgeBaseContextCreator(db, user_id)
-    return creator.create_contexts(subtask_id, kb_names)

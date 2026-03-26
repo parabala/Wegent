@@ -12,7 +12,6 @@ import pytest
 
 from app.services.openapi.kb_context import (
     KnowledgeBaseContextCreator,
-    create_kb_contexts_for_subtask,
 )
 from app.services.openapi.kb_resolver import ResolvedKnowledgeBase
 
@@ -155,59 +154,8 @@ class TestKnowledgeBaseContextCreator:
         assert call_kwargs["subtask_id"] == 100
         assert call_kwargs["user_id"] == 1
         assert call_kwargs["name"] == "Test KB"
-        assert call_kwargs["knowledge_id"] == 999
-
-
-class TestCreateKbContextsForSubtaskFunction:
-    """Test cases for create_kb_contexts_for_subtask convenience function."""
-
-    @pytest.fixture
-    def mock_db(self):
-        """Create a mock database session."""
-        db = MagicMock()
-        db.add_all = MagicMock()
-        db.commit = MagicMock()
-        db.refresh = MagicMock()
-        return db
-
-    @patch("app.services.openapi.kb_context.KnowledgeBaseNameResolver")
-    @patch("app.services.openapi.kb_context.SubtaskContext")
-    def test_convenience_function(
-        self, mock_context_class, mock_resolver_class, mock_db
-    ):
-        """Test the convenience function works correctly."""
-        # Arrange
-        mock_resolver = MagicMock()
-        mock_resolver_class.return_value = mock_resolver
-
-        resolved_kb = ResolvedKnowledgeBase(
-            kb_id=123, namespace="default", name="test_kb", display_name="Test KB"
-        )
-        mock_resolution_result = MagicMock()
-        mock_resolution_result.resolved = [resolved_kb]
-        mock_resolution_result.not_found = []
-        mock_resolution_result.no_access = []
-        mock_resolver.resolve.return_value = mock_resolution_result
-
-        mock_context = MagicMock()
-        mock_context_class.return_value = mock_context
-
-        kb_names = [{"namespace": "default", "name": "test_kb"}]
-
-        # Act
-        contexts = create_kb_contexts_for_subtask(mock_db, 1, 456, kb_names)
-
-        # Assert
-        assert len(contexts) == 1
-
-    @patch("app.services.openapi.kb_context.KnowledgeBaseNameResolver")
-    def test_convenience_function_empty_list(self, mock_resolver_class, mock_db):
-        """Test the convenience function with empty list."""
-        # Act
-        contexts = create_kb_contexts_for_subtask(mock_db, 1, 456, [])
-
-        # Assert
-        assert len(contexts) == 0
+        assert "knowledge_id" not in call_kwargs
+        assert call_kwargs["type_data"]["knowledge_id"] == 999
 
 
 class TestKnowledgeBaseContextCreatorErrorHandling:

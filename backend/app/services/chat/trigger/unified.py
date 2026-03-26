@@ -282,14 +282,27 @@ async def build_execution_request(
 
         # Process knowledge base names from API request (OpenAPI v1/responses)
         # This creates SubtaskContext records for KBs specified in the request
-        if user_subtask_id and knowledge_base_names:
+        processed_subtask_id = None
+        if knowledge_base_names:
+            processed_subtask_id = (
+                user_subtask_id if user_subtask_id else assistant_subtask.id
+            )
+            logger.info(
+                "[build_execution_request] Will create KB contexts for subtask_id: %d (user_subtask_id was %s)",
+                processed_subtask_id,
+                str(user_subtask_id),
+            )
             await _create_kb_contexts_from_api_request(
-                db, user.id, user_subtask_id, knowledge_base_names
+                db, user.id, processed_subtask_id, knowledge_base_names
             )
 
         # Process contexts (attachments, knowledge bases, etc.)
-        if user_subtask_id:
-            request = await _process_contexts(db, request, user_subtask_id, user.id)
+        # If we created KB contexts, we need to process them regardless of whether it's user_subtask or assistant subtask
+        context_subtask_id = (
+            user_subtask_id if user_subtask_id else processed_subtask_id
+        )
+        if context_subtask_id:
+            request = await _process_contexts(db, request, context_subtask_id, user.id)
 
         return request
 
