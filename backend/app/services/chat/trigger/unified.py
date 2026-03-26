@@ -19,6 +19,8 @@ Key changes from the original trigger_ai_response:
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+from fastapi import HTTPException
+
 from app.db.session import SessionLocal
 from app.models.kind import Kind
 from app.models.subtask import Subtask
@@ -399,6 +401,10 @@ async def _create_kb_contexts_from_api_request(
             len(contexts),
             user_subtask_id,
         )
+    except HTTPException:
+        # Re-raise HTTPException from KnowledgeBaseNameResolver to propagate
+        # permission errors (403) and not-found errors (404) to the caller
+        raise
     except Exception as e:
         # Log error but don't fail the request - KB context creation is best-effort
         logger.warning(
