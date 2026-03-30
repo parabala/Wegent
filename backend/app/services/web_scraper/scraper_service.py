@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.services.url_metadata import _validate_url_for_ssrf
+from app.services.web_scraper.scraper_config import WEB_SCRAPER_SITE_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -161,9 +162,13 @@ class WebScraperService:
         if self._crawler is None:
             from crawl4ai import AsyncWebCrawler, BrowserConfig
 
+            # Use realistic browser configuration to bypass anti-bot detection
             browser_config = BrowserConfig(
                 headless=True,
                 browser_type="chromium",
+                user_agent_mode="random",  # 0.4.0+ New feature: Automatically generate authentic randomness UA
+                use_managed_browser=True,  # Hosted by crawl4ai, with more authentic fingerprints
+                extra_args=["--no-sandbox", "--disable-dev-shm-usage"],
             )
             self._crawler = AsyncWebCrawler(config=browser_config)
             await self._crawler.start()
@@ -328,19 +333,22 @@ class WebScraperService:
             CrawlResult from crawler
         """
         logger.info(f"Crawling {url} (proxy: {proxy_url or 'none'})")
-        run_config = self._build_run_config(proxy_config=proxy_url)
+        run_config = self._build_run_config(proxy_config=proxy_url, url=url)
         return await crawler.arun(url=url, config=run_config)
 
-    def _build_run_config(self, proxy_config: Optional[str] = None):
+    def _build_run_config(
+        self, proxy_config: Optional[str] = None, url: Optional[str] = None
+    ):
         """Build CrawlerRunConfig with optional proxy.
 
         Args:
             proxy_config: Proxy URL string (e.g., "http://proxy:8080")
+            url: Target URL to determine special handling
 
         Returns:
             CrawlerRunConfig instance
         """
-        from crawl4ai import CrawlerRunConfig
+        from crawl4ai import CacheMode, CrawlerRunConfig
 
         # Configure the crawl run
         # Use domcontentloaded instead of networkidle to avoid timeout on sites
@@ -351,7 +359,17 @@ class WebScraperService:
             "wait_until": "domcontentloaded",  # Faster than networkidle, avoids timeout
             "page_timeout": WEB_SCRAPER_TIMEOUT,
             "remove_overlay_elements": False,  # Disabled to avoid navigation conflicts
+            "cache_mode": CacheMode.BYPASS,  # Force refresh, bypassing the local cache
+            "remove_overlay_elements": True,  # Automatically remove mask layers
         }
+
+        # Apply site-specific configuration if URL matches known sites
+        if url:
+            for domain, site_config in WEB_SCRAPER_SITE_CONFIG.items():
+                if domain in url:
+                    logger.info(f"Applying site-specific config for {domain}: {url}")
+                    config_kwargs.update(site_config)
+                    break
 
         if proxy_config:
             config_kwargs["proxy_config"] = proxy_config
