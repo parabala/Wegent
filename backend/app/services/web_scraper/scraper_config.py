@@ -9,6 +9,7 @@ Web scraper service constants and site-specific configurations.
 import json
 import logging
 from functools import lru_cache
+from typing import Any, Dict
 
 from app.core.config import settings
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 # Loaded from settings.WEB_SCRAPER_SITE_CONFIG
 
 
-def _load_site_config():
+def _load_site_config() -> Dict[str, Any]:
     """Load site configuration from settings.
 
     This function is called at runtime to ensure settings
@@ -33,9 +34,6 @@ def _load_site_config():
     # and is properly parsed by Pydantic settings
     try:
         config_value = settings.WEB_SCRAPER_SITE_CONFIG
-        logger.info(
-            f"[WebScraperConfig] Loading WEB_SCRAPER_SITE_CONFIG from settings {config_value}"
-        )
 
         if not config_value:
             logger.warning(
@@ -70,7 +68,7 @@ def _load_site_config():
     except json.JSONDecodeError as e:
         logger.error(f"[WebScraperConfig] Failed to parse WEB_SCRAPER_SITE_CONFIG: {e}")
         return {}
-    except Exception as e:
+    except (AttributeError, KeyError, TypeError, ValueError) as e:
         logger.error(
             f"[WebScraperConfig] Error loading WEB_SCRAPER_SITE_CONFIG from settings: {e}"
         )
@@ -78,7 +76,7 @@ def _load_site_config():
 
 
 @lru_cache(maxsize=1)
-def get_site_config():
+def get_site_config() -> Dict[str, Any]:
     """Get site configuration with caching.
 
     Uses LRU cache to avoid re-parsing config on every request,
