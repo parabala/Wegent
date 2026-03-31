@@ -33,6 +33,8 @@ from app.schemas.knowledge import (
     DocumentDetailResponse,
     KnowledgeBaseCreate,
     KnowledgeBaseListResponse,
+    KnowledgeBaseMigrateRequest,
+    KnowledgeBaseMigrateResponse,
     KnowledgeBaseResponse,
     KnowledgeBaseTypeUpdate,
     KnowledgeBaseUpdate,
@@ -482,6 +484,48 @@ def update_knowledge_base_type(
             knowledge_base,
             KnowledgeService.get_document_count(db, knowledge_base.id),
         )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+
+@router.post(
+    "/{knowledge_base_id}/migrate",
+    response_model=KnowledgeBaseMigrateResponse,
+)
+@trace_sync("migrate_knowledge_base_to_group", "knowledge.api")
+def migrate_knowledge_base_to_group(
+    knowledge_base_id: int,
+    data: KnowledgeBaseMigrateRequest,
+    current_user: User = Depends(security.get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Migrate a personal knowledge base to a group.
+
+    - Only personal knowledge bases (namespace='default') can be migrated
+    - Only the creator of the knowledge base can migrate it
+    - User must have Maintainer or Owner permission in the target group
+    - Target group name must be a valid group namespace
+    """
+    try:
+        result = KnowledgeService.migrate_knowledge_base_to_group(
+            db=db,
+            knowledge_base_id=knowledge_base_id,
+            user_id=current_user.id,
+            target_group_name=data.target_group_name,
+        )
+        add_span_event(
+            "knowledge.base.migrated",
+            {
+                "kb_id": str(knowledge_base_id),
+                "user_id": str(current_user.id),
+                "target_group": data.target_group_name,
+            },
+        )
+        return result
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
