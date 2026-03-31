@@ -77,6 +77,12 @@ class WegentTool(BaseModel):
             "type": "knowledge_base",
             "knowledge_base_names": ["default#my_kb", "org#team_kb"]
         }
+
+        # List all accessible knowledge bases
+        {
+            "type": "knowledge_base",
+            "list_knowledge_base": "all"
+        }
     """
 
     type: str = Field(
@@ -98,6 +104,10 @@ class WegentTool(BaseModel):
     knowledge_base_names: Optional[List[str]] = Field(
         default=None,
         description="List of knowledge base names in 'namespace#name' format. Required when type='knowledge_base'",
+    )
+    list_knowledge_base: Optional[str] = Field(
+        default=None,
+        description="When set to 'all', return list of accessible knowledge bases instead of processing the request. Used with type='knowledge_base'",
     )
 
 

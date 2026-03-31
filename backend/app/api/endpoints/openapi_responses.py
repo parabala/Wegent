@@ -120,6 +120,62 @@ def _task_to_response_object(
     )
 
 
+async def _handle_list_knowledge_bases(
+    db: Session,
+    user: User,
+    model_string: str,
+    previous_response_id: Optional[str] = None,
+) -> ResponseObject:
+    """
+    Handle list_knowledge_base='all' request.
+
+    Returns a JSON serialized list of all accessible knowledge bases for the user.
+
+    Args:
+        db: Database session
+        user: Current user
+        model_string: Model string from request
+        previous_response_id: Optional previous response ID
+
+    Returns:
+        ResponseObject with JSON serialized knowledge base list
+    """
+    from app.services.knowledge.knowledge_service import KnowledgeService
+
+    # Get all accessible knowledge bases grouped by scope
+    grouped_kbs = KnowledgeService.get_all_knowledge_bases_grouped(db, user.id)
+
+    # Serialize grouped_kbs to JSON
+    content_json = grouped_kbs.model_dump_json()
+
+    # Generate unique response ID for this list request
+    response_id = f"resp_list_kb_{int(datetime.now().timestamp())}"
+    created_at = int(datetime.now().timestamp())
+
+    summary = grouped_kbs.summary
+    logger.info(
+        f"[LIST_KB] User {user.id} listed knowledge bases: "
+        f"total={summary.total_count}, personal={summary.personal_count}, "
+        f"team={summary.group_count}, org={summary.organization_count}"
+    )
+
+    return ResponseObject(
+        id=response_id,
+        created_at=created_at,
+        status="completed",
+        model=model_string,
+        output=[
+            OutputMessage(
+                id=f"msg_{response_id}",
+                status="completed",
+                role="assistant",
+                content=[OutputTextContent(text=content_json)],
+            )
+        ],
+        previous_response_id=previous_response_id,
+    )
+
+
 @router.post("")
 @limiter.limit(settings.RATE_LIMIT_CREATE_RESPONSE)
 async def create_response(
@@ -171,11 +227,23 @@ async def create_response(
     current_user = auth_context.user
     api_key_name = auth_context.api_key_name
 
+    # Parse tools for settings first to check for list_knowledge_base
+    tool_settings = parse_wegent_tools(request_body.tools)
+    logger.info(f"Tool settings: {tool_settings}")
+
+    # Check if list_knowledge_base is requested - this bypasses normal flow
+    list_kb_mode = tool_settings.get("list_knowledge_base")
+    if list_kb_mode == "all":
+        # Return list of accessible knowledge bases without requiring team
+        return await _handle_list_knowledge_bases(
+            db=db,
+            user=current_user,
+            model_string=request_body.model,
+            previous_response_id=request_body.previous_response_id,
+        )
+
     # Parse model string
     model_info = parse_model_string(request_body.model)
-
-    # Parse tools for settings
-    tool_settings = parse_wegent_tools(request_body.tools)
 
     # Extract input text
     input_text = extract_input_text(request_body.input)

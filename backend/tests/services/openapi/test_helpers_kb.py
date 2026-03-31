@@ -172,3 +172,65 @@ class TestParseWegentToolsWithKnowledgeBase:
             parse_wegent_tools(tools)
 
         assert exc_info.value.status_code == 400
+
+    def test_parse_list_knowledge_base_all(self):
+        """Test parsing knowledge_base tool with list_knowledge_base='all'."""
+        # Arrange
+        tools = [
+            WegentTool(
+                type="knowledge_base",
+                list_knowledge_base="all",
+            )
+        ]
+
+        # Act
+        result = parse_wegent_tools(tools)
+
+        # Assert
+        assert result["list_knowledge_base"] == "all"
+        assert result["knowledge_base_names"] == []
+
+    def test_parse_list_knowledge_base_with_names(self):
+        """Test parsing knowledge_base tool with both list_knowledge_base and names."""
+        # Arrange
+        tools = [
+            WegentTool(
+                type="knowledge_base",
+                list_knowledge_base="all",
+                knowledge_base_names=["default#kb1"],
+            )
+        ]
+
+        # Act
+        result = parse_wegent_tools(tools)
+
+        # Assert
+        assert result["list_knowledge_base"] == "all"
+        assert len(result["knowledge_base_names"]) == 1
+
+    def test_parse_list_knowledge_base_none(self):
+        """Test parsing knowledge_base tool without list_knowledge_base."""
+        # Arrange
+        tools = [WegentTool(type="knowledge_base")]
+
+        # Act
+        result = parse_wegent_tools(tools)
+
+        # Assert
+        assert result["list_knowledge_base"] is None
+
+    def test_parse_list_knowledge_base_other_value(self):
+        """Test parsing knowledge_base tool with list_knowledge_base set to other value."""
+        # Arrange
+        tools = [
+            WegentTool(
+                type="knowledge_base",
+                list_knowledge_base="custom",
+            )
+        ]
+
+        # Act
+        result = parse_wegent_tools(tools)
+
+        # Assert
+        assert result["list_knowledge_base"] == "custom"

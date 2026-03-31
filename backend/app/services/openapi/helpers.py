@@ -81,6 +81,7 @@ def parse_wegent_tools(tools: Optional[List[WegentTool]]) -> Dict[str, Any]:
         - preload_skills: list (skills to preload for the bot)
         - workspace: dict (git workspace info for code tasks, contains git_url, branch, git_repo, git_domain)
         - knowledge_base_names: list (knowledge base names in 'namespace#name' format)
+        - list_knowledge_base: str or None (when set to 'all', return list of accessible KBs)
     """
     result: Dict[str, Any] = {
         "enable_chat_bot": False,
@@ -88,6 +89,7 @@ def parse_wegent_tools(tools: Optional[List[WegentTool]]) -> Dict[str, Any]:
         "preload_skills": [],
         "workspace": None,
         "knowledge_base_names": [],
+        "list_knowledge_base": None,
     }
     if tools:
         for tool in tools:
@@ -126,11 +128,16 @@ def parse_wegent_tools(tools: Optional[List[WegentTool]]) -> Dict[str, Any]:
             elif tool.type == "skill" and tool.preload_skills:
                 # Add skills to preload_skills list
                 result["preload_skills"].extend(tool.preload_skills)
-            elif tool.type == "knowledge_base" and tool.knowledge_base_names:
-                # Parse and validate knowledge base names
-                for kb_name in tool.knowledge_base_names:
-                    parsed = parse_knowledge_base_name(kb_name)
-                    result["knowledge_base_names"].append(parsed)
+            elif tool.type == "knowledge_base":
+                # Handle knowledge_base_names if provided
+                if tool.knowledge_base_names:
+                    # Parse and validate knowledge base names
+                    for kb_name in tool.knowledge_base_names:
+                        parsed = parse_knowledge_base_name(kb_name)
+                        result["knowledge_base_names"].append(parsed)
+                # Handle list_knowledge_base if provided
+                if tool.list_knowledge_base:
+                    result["list_knowledge_base"] = tool.list_knowledge_base
     return result
 
 

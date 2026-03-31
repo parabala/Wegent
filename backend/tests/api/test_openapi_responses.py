@@ -898,3 +898,127 @@ class TestOpenAPIResponsesHelpers:
         assert subtask_status_to_message_status("RUNNING") == "in_progress"
         assert subtask_status_to_message_status("COMPLETED") == "completed"
         assert subtask_status_to_message_status("FAILED") == "incomplete"
+
+
+@pytest.mark.api
+class TestOpenAPIResponsesListKnowledgeBases:
+    """Test POST /api/v1/responses with list_knowledge_base='all'."""
+
+    def test_list_knowledge_bases_success(
+        self,
+        test_client: TestClient,
+        test_api_key,
+        test_team: Kind,
+        test_bot: Kind,
+        test_model: Kind,
+        test_public_shell: Kind,
+        test_db: Session,
+        test_user: User,
+    ):
+        """Test successful listing of knowledge bases."""
+        # Create a test knowledge base
+        kb_json = {
+            "apiVersion": "agent.wecode.io/v1",
+            "kind": "KnowledgeBase",
+            "metadata": {"name": "kb-test", "namespace": "default"},
+            "spec": {
+                "name": "Test Knowledge Base",
+                "description": "A test knowledge base",
+                "kbType": "notebook",
+            },
+            "status": {"state": "Available"},
+        }
+        kb = Kind(
+            user_id=test_user.id,
+            kind="KnowledgeBase",
+            name="kb-test",
+            namespace="default",
+            json=kb_json,
+            is_active=True,
+        )
+        test_db.add(kb)
+        test_db.commit()
+
+        response = test_client.post(
+            "/api/v1/responses",
+            headers={"X-API-Key": test_api_key[0]},
+            json={
+                "model": "default#test-team",
+                "input": "List knowledge bases",
+                "tools": [{"type": "knowledge_base", "list_knowledge_base": "all"}],
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert len(data["output"]) == 1
+        assert data["output"][0]["role"] == "assistant"
+        # Check JSON response contains knowledge base data
+        response_text = data["output"][0]["content"][0]["text"]
+        assert "Test Knowledge Base" in response_text
+        assert "personal" in response_text
+        assert "created_by_me" in response_text
+
+    def test_list_knowledge_bases_without_auth(self, test_client: TestClient):
+        """Test list knowledge bases fails without authentication."""
+        response = test_client.post(
+            "/api/v1/responses",
+            json={
+                "model": "default#test-team",
+                "input": "List knowledge bases",
+                "tools": [{"type": "knowledge_base", "list_knowledge_base": "all"}],
+            },
+        )
+
+        assert response.status_code == 401
+
+    def test_list_knowledge_bases_no_team_required(
+        self, test_client: TestClient, test_api_key, test_db: Session, test_user: User
+    ):
+        """Test list knowledge bases works even with non-existent team.
+
+        When list_knowledge_base='all' is specified, the request should
+        return knowledge bases without requiring the team to exist.
+        """
+        # Create a test knowledge base
+        kb_json = {
+            "apiVersion": "agent.wecode.io/v1",
+            "kind": "KnowledgeBase",
+            "metadata": {"name": "kb-test-2", "namespace": "default"},
+            "spec": {
+                "name": "Test KB No Team",
+                "description": "A test knowledge base",
+                "kbType": "notebook",
+            },
+            "status": {"state": "Available"},
+        }
+        kb = Kind(
+            user_id=test_user.id,
+            kind="KnowledgeBase",
+            name="kb-test-2",
+            namespace="default",
+            json=kb_json,
+            is_active=True,
+        )
+        test_db.add(kb)
+        test_db.commit()
+
+        response = test_client.post(
+            "/api/v1/responses",
+            headers={"X-API-Key": test_api_key[0]},
+            json={
+                "model": "default#nonexistent-team",
+                "input": "List knowledge bases",
+                "tools": [{"type": "knowledge_base", "list_knowledge_base": "all"}],
+            },
+        )
+
+        # list_knowledge_base should work even with non-existent team
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        # Check JSON response contains knowledge base data
+        response_text = data["output"][0]["content"][0]["text"]
+        assert "Test KB No Team" in response_text
+        assert "personal" in response_text
