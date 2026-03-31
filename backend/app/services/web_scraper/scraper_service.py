@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.services.url_metadata import _validate_url_for_ssrf
-from app.services.web_scraper.scraper_config import WEB_SCRAPER_SITE_CONFIG
+from app.services.web_scraper.scraper_config import get_site_config
 
 logger = logging.getLogger(__name__)
 
@@ -353,27 +353,48 @@ class WebScraperService:
         # Configure the crawl run
         # Use domcontentloaded instead of networkidle to avoid timeout on sites
         # with persistent network activity (GitHub, SPAs with WebSocket, etc.)
-        # Disable remove_overlay_elements to avoid "Execution context was destroyed"
-        # errors on sites with navigation/redirects (e.g., Weibo)
+        # Disable remove_overlay_elements for sites with navigation to avoid
+        # "Execution context was destroyed" errors
         config_kwargs = {
             "wait_until": "domcontentloaded",  # Faster than networkidle, avoids timeout
             "page_timeout": WEB_SCRAPER_TIMEOUT,
-            "remove_overlay_elements": False,  # Disabled to avoid navigation conflicts
             "cache_mode": CacheMode.BYPASS,  # Force refresh, bypassing the local cache
-            "remove_overlay_elements": True,  # Automatically remove mask layers
+            "remove_overlay_elements": False,  # Disabled to avoid navigation conflicts
         }
 
+        # Load site config at runtime (not at module import time)
+        site_configs = get_site_config()
+
         # Apply site-specific configuration if URL matches known sites
+        matched_config = None
         if url:
-            for domain, site_config in WEB_SCRAPER_SITE_CONFIG.items():
-                if domain in url:
-                    logger.info(f"Applying site-specific config for {domain}: {url}")
-                    config_kwargs.update(site_config)
-                    break
+            # Parse hostname from URL for accurate domain matching
+            hostname = (urlparse(url).hostname or "").lower()
+            if hostname:
+                for domain, site_config in site_configs.items():
+                    logger.debug(
+                        f"[WebScraper] Checking domain '{domain}' against hostname '{hostname}'"
+                    )
+                    if hostname == domain or hostname.endswith(f".{domain}"):
+                        logger.debug(
+                            f"[WebScraper] MATCHED! Applying site-specific config for {domain} (hostname: {hostname})"
+                        )
+                        config_kwargs.update(site_config)
+                        matched_config = site_config
+                        break
+                if not matched_config:
+                    logger.debug(
+                        f"[WebScraper] No site-specific config matched for hostname: {hostname}"
+                    )
 
         if proxy_config:
             config_kwargs["proxy_config"] = proxy_config
-            logger.debug(f"Using proxy: {proxy_config}")
+            logger.debug(f"[WebScraper] Using proxy: {proxy_config}")
+
+        # Log final config
+        logger.info(
+            f"[WebScraper] Final config kwargs keys: {list(config_kwargs.keys())}"
+        )
 
         return CrawlerRunConfig(**config_kwargs)
 
