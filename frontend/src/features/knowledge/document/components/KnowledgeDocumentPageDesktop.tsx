@@ -557,7 +557,7 @@ export function KnowledgeDocumentPageDesktop() {
       try {
         await migrateKnowledgeBaseToGroup(migratingKb.id, targetGroupName)
 
-        // Refresh sidebar data
+        // Refresh sidebar data only on success
         await sidebar.refreshAll()
 
         // Clear selection if migrated KB was selected
@@ -565,7 +565,12 @@ export function KnowledgeDocumentPageDesktop() {
           sidebar.clearSelection()
         }
 
+        // Only close dialog on success
         setMigratingKb(null)
+      } catch (error) {
+        // Re-throw the error so MigrateKnowledgeBaseDialog can handle it
+        // and display the error message to the user
+        throw error
       } finally {
         setIsMigrating(false)
       }

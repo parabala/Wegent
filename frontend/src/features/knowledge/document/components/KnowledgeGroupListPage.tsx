@@ -587,7 +587,7 @@ function KnowledgeBaseRow({
               title={tFunc('knowledge:document.migrate.title', '迁移到群组')}
               data-testid={`migrate-kb-${kb.id}`}
             >
-              <FolderOutput className="w-4 h-4 text-text-muted hover:text-primary" />
+              <FolderOutput className="w-4 h-4 text-text-muted hover:text-primary transition-colors" />
             </Button>
           )}
           {onEdit && (
