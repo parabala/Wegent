@@ -2292,6 +2292,7 @@ class KnowledgeService:
         if "metadata" not in kb_json:
             kb_json["metadata"] = {}
         kb_json["metadata"]["namespace"] = target_group_name
+        kb_json["metadata"]["name"] = new_kb_name
         kb.json = kb_json
         flag_modified(kb, "json")
 
