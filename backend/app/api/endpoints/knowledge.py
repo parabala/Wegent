@@ -12,7 +12,7 @@ which provides a unified interface for both REST API and MCP tools.
 import asyncio
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
@@ -1565,16 +1565,19 @@ def get_document_chunk(
 knowledge_router = APIRouter()
 
 
-@knowledge_router.get("/list")
-@trace_sync("list_knowledge_bases", "knowledge.api")
-def list_knowledge_bases(
+@knowledge_router.get(
+    "/list",
+    response_model=Union[PersonalKnowledgeBaseGroup, AllGroupedKnowledgeResponse],
+)
+@trace_sync("list_knowledge_bases_v1", "knowledge.api")
+def list_knowledge_bases_v1(
     scope: str = Query(
         default="all",
         description="Scope of knowledge bases to return: 'personal' or 'all'",
     ),
     auth_context: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
-):
+) -> Union[PersonalKnowledgeBaseGroup, AllGroupedKnowledgeResponse]:
     """
     List knowledge bases with flexible authentication.
 
