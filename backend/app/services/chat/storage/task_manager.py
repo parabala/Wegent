@@ -282,11 +282,11 @@ def create_new_task(
             .first()
         )
         if kb:
+            # Note: namespace is no longer stored - ID is sufficient for lookup
             knowledge_base_refs = [
                 {
                     "id": kb.id,
                     "name": kb.name,
-                    "namespace": kb.namespace,
                     "boundBy": user.user_name,
                     "boundAt": datetime.now().isoformat(),
                 }
