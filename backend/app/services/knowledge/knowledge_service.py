@@ -2226,7 +2226,6 @@ class KnowledgeService:
             .filter(
                 Kind.id == knowledge_base_id,
                 Kind.kind == "KnowledgeBase",
-                Kind.is_active == True,
             )
             .first()
         )
@@ -2264,7 +2263,6 @@ class KnowledgeService:
             .filter(
                 Kind.kind == "KnowledgeBase",
                 Kind.namespace == target_group_name,
-                Kind.is_active == True,
             )
             .all()
         )
