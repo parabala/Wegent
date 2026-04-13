@@ -5,6 +5,7 @@ version: "2.1.0"
 author: "Wegent Team"
 tags: ["sandbox", "code-execution", "filesystem", "automation"]
 bindShells: ["Chat"]
+preload: true
 provider:
   module: provider
   class: SandboxToolProvider
