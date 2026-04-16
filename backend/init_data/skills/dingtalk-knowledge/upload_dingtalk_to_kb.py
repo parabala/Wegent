@@ -6,6 +6,9 @@
 
 This module provides the UploadDingTalkToKBTool class that downloads
 files from DingTalk and uploads them to Wegent knowledge base.
+
+The tool uses the backend MCP proxy API to call DingTalk MCP tools,
+which handles authentication and MCP protocol details.
 """
 
 import json
@@ -24,30 +27,6 @@ logger = logging.getLogger(__name__)
 
 # Default API base URL
 DEFAULT_API_BASE_URL = "http://backend:8000"
-
-# MCP Provider registry for DingTalk
-MCP_PROVIDER_REGISTRY = {
-    "dingtalk": {
-        "provider_id": "dingtalk",
-        "services": {
-            "docs": {
-                "service_id": "docs",
-                "server_name": "dingtalk_docs",
-                "skill_name": "dingtalk-docs",
-            },
-            "table": {
-                "service_id": "table",
-                "server_name": "dingtalk_table",
-                "skill_name": "dingtalk-table",
-            },
-            "ai_table": {
-                "service_id": "ai_table",
-                "server_name": "dingtalk_ai_table",
-                "skill_name": "dingtalk-ai-table",
-            },
-        },
-    }
-}
 
 
 class UploadDingTalkToKBInput(BaseModel):
@@ -76,9 +55,14 @@ class UploadDingTalkToKBTool(BaseTool):
 
     This tool:
     1. Parses the DingTalk URL to extract document ID and type
-    2. Retrieves DingTalk MCP credentials from user preferences
-    3. Downloads the file from DingTalk using MCP tools
+    2. Retrieves DingTalk MCP credentials from user preferences via backend API
+    3. Downloads the file from DingTalk using backend MCP proxy API
     4. Uploads the file to the specified knowledge base
+
+    The backend MCP proxy API handles:
+    - User MCP configuration retrieval and decryption
+    - MCP tool invocation
+    - Authentication with DingTalk MCP servers
     """
 
     name: str = "upload_dingtalk_to_kb"
@@ -175,15 +159,7 @@ Example:
                 f"[UploadDingTalkToKBTool] Parsed document: id={doc_id}, type={final_doc_type}"
             )
 
-            # Step 2: Get user MCP configuration
-            await self._emit_status("running", "Retrieving DingTalk configuration...")
-            mcp_config = await self._get_mcp_config(final_doc_type)
-            if not mcp_config:
-                error_msg = f"DingTalk {final_doc_type} MCP not configured or disabled"
-                await self._emit_status("failed", error_msg)
-                return self._format_error(error_msg)
-
-            # Step 3: Get sandbox manager and create sandbox
+            # Step 2: Get sandbox manager and create sandbox
             await self._emit_status("running", "Preparing sandbox environment...")
             sandbox_manager = self._get_sandbox_manager()
 
@@ -197,7 +173,7 @@ Example:
                 await self._emit_status("failed", error_msg)
                 return self._format_error(error_msg)
 
-            # Step 4: Download file from DingTalk
+            # Step 3: Download file from DingTalk via backend MCP proxy
             await self._emit_status("running", "Downloading file from DingTalk...")
 
             # Determine file extension based on document type
@@ -209,7 +185,6 @@ Example:
                 sandbox=sandbox,
                 doc_id=doc_id,
                 doc_type=final_doc_type,
-                mcp_url=mcp_config["url"],
                 save_path=temp_filepath,
             )
 
@@ -227,7 +202,7 @@ Example:
                 f"size={file_size}"
             )
 
-            # Step 5: Upload to knowledge base
+            # Step 4: Upload to knowledge base
             await self._emit_status("running", "Uploading to knowledge base...")
 
             final_document_name = document_name or actual_filename
@@ -310,57 +285,6 @@ Example:
 
         return {"doc_id": doc_id, "doc_type": doc_type}
 
-    async def _get_mcp_config(self, doc_type: str) -> Optional[dict[str, Any]]:
-        """Get MCP configuration for the specified document type.
-
-        Args:
-            doc_type: Document type ('docs', 'table', 'ai_table')
-
-        Returns:
-            MCP configuration with URL, or None if not configured
-        """
-        if not self.db_session:
-            logger.error("[UploadDingTalkToKBTool] No database session available")
-            return None
-
-        try:
-            # Import here to avoid circular dependencies
-            from app.services.user_mcp_service import UserMCPService
-            from app.models.user import User
-
-            # Query user preferences
-            result = await self.db_session.execute(
-                "SELECT preferences FROM users WHERE id = :user_id",
-                {"user_id": self.user_id},
-            )
-            row = result.fetchone()
-
-            if not row:
-                logger.warning(f"[UploadDingTalkToKBTool] User not found: {self.user_id}")
-                return None
-
-            preferences = row[0]
-
-            # Get service config using UserMCPService
-            service_config = UserMCPService.get_provider_service_config(
-                preferences, "dingtalk", doc_type
-            )
-
-            if not service_config.get("enabled") or not service_config.get("url"):
-                logger.warning(
-                    f"[UploadDingTalkToKBTool] MCP not enabled or no URL for {doc_type}"
-                )
-                return None
-
-            return {
-                "enabled": service_config["enabled"],
-                "url": service_config["url"],
-            }
-
-        except Exception as e:
-            logger.error(f"[UploadDingTalkToKBTool] Failed to get MCP config: {e}")
-            return None
-
     def _get_sandbox_manager(self):
         """Get sandbox manager instance.
 
@@ -397,30 +321,27 @@ Example:
         sandbox: Any,
         doc_id: str,
         doc_type: str,
-        mcp_url: str,
         save_path: str,
     ) -> dict[str, Any]:
-        """Download file from DingTalk using MCP tools.
+        """Download file from DingTalk using backend MCP proxy API.
 
         Args:
             sandbox: Sandbox instance
             doc_id: DingTalk document ID
             doc_type: Document type
-            mcp_url: MCP server URL
             save_path: Path to save the file
 
         Returns:
             Dictionary with success status and file info
         """
         try:
-            # Determine which MCP tool to use based on document type
+            # Determine which MCP tool flow to use based on document type
             if doc_type == "docs":
-                # For docs, we need to get document info first, then download
-                return await self._download_dingtalk_doc(sandbox, doc_id, mcp_url, save_path)
+                return await self._download_dingtalk_doc(sandbox, doc_id, save_path)
             elif doc_type == "table":
-                return await self._download_dingtalk_table(sandbox, doc_id, mcp_url, save_path)
+                return await self._download_dingtalk_table(sandbox, doc_id, save_path)
             elif doc_type == "ai_table":
-                return await self._download_dingtalk_ai_table(sandbox, doc_id, mcp_url, save_path)
+                return await self._download_dingtalk_ai_table(sandbox, doc_id, save_path)
             else:
                 return {"success": False, "error": f"Unsupported document type: {doc_type}"}
 
@@ -428,65 +349,114 @@ Example:
             logger.error(f"[UploadDingTalkToKBTool] Download error: {e}")
             return {"success": False, "error": str(e)}
 
+    async def _call_backend_mcp_proxy(
+        self,
+        sandbox: Any,
+        service_id: str,
+        tool_name: str,
+        parameters: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Call DingTalk MCP tool via backend proxy API.
+
+        Args:
+            sandbox: Sandbox instance
+            service_id: DingTalk service ID (docs, table, ai_table)
+            tool_name: Name of the MCP tool to call
+            parameters: Tool parameters
+
+        Returns:
+            Tool result as dictionary
+        """
+        api_base_url = os.getenv("BACKEND_API_URL", DEFAULT_API_BASE_URL).rstrip("/")
+        auth_token = self.auth_token
+
+        if not auth_token:
+            raise ValueError("No auth token available for MCP proxy call")
+
+        # Build backend MCP proxy URL
+        proxy_url = f"{api_base_url}/api/internal/mcp/dingtalk/{service_id}/call"
+
+        # Build request payload
+        payload = {
+            "tool_name": tool_name,
+            "parameters": parameters,
+        }
+
+        # Build curl command
+        json_payload = json.dumps(payload, ensure_ascii=False)
+        json_payload_escaped = json_payload.replace("'", "'\\''")
+
+        curl_cmd = (
+            f"curl -s -X POST '{proxy_url}' "
+            f'-H "Content-Type: application/json" '
+            f'-H "Authorization: Bearer {auth_token}" '
+            f"--data '{json_payload_escaped}'"
+        )
+
+        logger.debug(f"[UploadDingTalkToKBTool] Calling MCP proxy: {tool_name}")
+
+        result = await sandbox.commands.run(
+            cmd=curl_cmd,
+            cwd="/home/user",
+            timeout=120,
+        )
+
+        if result.exit_code != 0:
+            raise RuntimeError(f"MCP proxy call failed: {result.stderr}")
+
+        # Parse response
+        try:
+            response = json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Failed to parse MCP proxy response: {e}")
+
+        if not response.get("success"):
+            error_msg = response.get("error", "Unknown error from MCP proxy")
+            raise RuntimeError(error_msg)
+
+        return response.get("result", {})
+
     async def _download_dingtalk_doc(
         self,
         sandbox: Any,
         doc_id: str,
-        mcp_url: str,
         save_path: str,
     ) -> dict[str, Any]:
-        """Download DingTalk document using MCP.
+        """Download DingTalk document using backend MCP proxy.
 
         For DingTalk docs, we:
         1. Get document info to check type
         2. Download as appropriate format
         """
         try:
-            # First, get document info
-            api_base_url = os.getenv("BACKEND_API_URL", DEFAULT_API_BASE_URL).rstrip("/")
-            auth_token = self.auth_token
+            # Step 1: Get document info
+            logger.debug(f"[UploadDingTalkToKBTool] Getting doc info for {doc_id}")
 
-            if not auth_token:
-                return {"success": False, "error": "No auth token available"}
-
-            # Build curl command to call MCP through backend proxy
-            # First get document info
-            get_info_cmd = (
-                f"curl -s -X POST '{mcp_url}/tools/get_document_info' "
-                f'-H "Content-Type: application/json" '
-                f'-H "Authorization: Bearer {auth_token}" '
-                f'--data \'{"nodeId": "' + doc_id + '"}\' '
+            doc_info = await self._call_backend_mcp_proxy(
+                sandbox=sandbox,
+                service_id="docs",
+                tool_name="get_document_info",
+                parameters={"nodeId": doc_id},
             )
-
-            result = await sandbox.commands.run(
-                cmd=get_info_cmd,
-                cwd="/home/user",
-                timeout=60,
-            )
-
-            if result.exit_code != 0:
-                return {"success": False, "error": f"Failed to get doc info: {result.stderr}"}
-
-            # Parse document info
-            try:
-                doc_info = json.loads(result.stdout)
-            except json.JSONDecodeError:
-                doc_info = {}
 
             content_type = doc_info.get("contentType", "")
             extension = doc_info.get("extension", "")
             doc_name = doc_info.get("name", f"dingtalk_doc_{doc_id}")
 
+            logger.debug(
+                f"[UploadDingTalkToKBTool] Doc info: type={content_type}, ext={extension}"
+            )
+
             # Determine download method based on document type
             if content_type == "ALIDOC" and extension == "adoc":
                 # Online document - get content as markdown
                 return await self._download_dingtalk_adoc(
-                    sandbox, doc_id, mcp_url, save_path, doc_name
+                    sandbox, doc_id, save_path, doc_name
                 )
             else:
-                # Regular file - download directly
+                # Regular file - download using download_file
                 return await self._download_dingtalk_file(
-                    sandbox, doc_id, mcp_url, save_path, doc_name
+                    sandbox, doc_id, save_path, doc_name
                 )
 
         except Exception as e:
@@ -497,37 +467,22 @@ Example:
         self,
         sandbox: Any,
         doc_id: str,
-        mcp_url: str,
         save_path: str,
         doc_name: str,
     ) -> dict[str, Any]:
         """Download DingTalk online document as markdown."""
         try:
-            auth_token = self.auth_token
-
             # Get document content as markdown
-            get_content_cmd = (
-                f"curl -s -X POST '{mcp_url}/tools/get_document_content' "
-                f'-H "Content-Type: application/json" '
-                f'-H "Authorization: Bearer {auth_token}" '
-                f'--data \'{"nodeId": "' + doc_id + '"}\' '
+            logger.debug(f"[UploadDingTalkToKBTool] Getting doc content for {doc_id}")
+
+            content_result = await self._call_backend_mcp_proxy(
+                sandbox=sandbox,
+                service_id="docs",
+                tool_name="get_document_content",
+                parameters={"nodeId": doc_id},
             )
 
-            result = await sandbox.commands.run(
-                cmd=get_content_cmd,
-                cwd="/home/user",
-                timeout=120,
-            )
-
-            if result.exit_code != 0:
-                return {"success": False, "error": f"Failed to get doc content: {result.stderr}"}
-
-            # Parse response
-            try:
-                response = json.loads(result.stdout)
-                content = response.get("content", "")
-            except json.JSONDecodeError:
-                content = result.stdout
+            content = content_result.get("content", "")
 
             # Save as markdown file
             if not save_path.endswith(".md"):
@@ -563,43 +518,30 @@ Example:
         self,
         sandbox: Any,
         doc_id: str,
-        mcp_url: str,
         save_path: str,
         doc_name: str,
     ) -> dict[str, Any]:
         """Download DingTalk file using download_file MCP tool."""
         try:
-            auth_token = self.auth_token
+            # Step 1: Call download_file to get download URL
+            logger.debug(f"[UploadDingTalkToKBTool] Getting download URL for {doc_id}")
 
-            # Call download_file MCP tool to get download URL
-            download_info_cmd = (
-                f"curl -s -X POST '{mcp_url}/tools/download_file' "
-                f'-H "Content-Type: application/json" '
-                f'-H "Authorization: Bearer {auth_token}" '
-                f'--data \'{"nodeId": "' + doc_id + '"}\' '
+            download_info = await self._call_backend_mcp_proxy(
+                sandbox=sandbox,
+                service_id="docs",
+                tool_name="download_file",
+                parameters={"nodeId": doc_id},
             )
 
-            result = await sandbox.commands.run(
-                cmd=download_info_cmd,
-                cwd="/home/user",
-                timeout=60,
-            )
-
-            if result.exit_code != 0:
-                return {"success": False, "error": f"Failed to get download info: {result.stderr}"}
-
-            # Parse download info
-            try:
-                download_info = json.loads(result.stdout)
-                resource_url = download_info.get("resourceUrl", "")
-                headers = download_info.get("headers", {})
-            except json.JSONDecodeError as e:
-                return {"success": False, "error": f"Failed to parse download info: {e}"}
+            resource_url = download_info.get("resourceUrl", "")
+            headers = download_info.get("headers", {})
 
             if not resource_url:
-                return {"success": False, "error": "No download URL returned"}
+                return {"success": False, "error": "No download URL returned from MCP"}
 
-            # Download file using curl with headers
+            logger.debug(f"[UploadDingTalkToKBTool] Downloading from: {resource_url[:100]}...")
+
+            # Step 2: Download file using curl with headers
             header_args = " ".join([f'-H "{k}: {v}"' for k, v in headers.items()])
             download_cmd = f'curl -s -L {header_args} "{resource_url}" -o "{save_path}"'
 
@@ -630,73 +572,46 @@ Example:
         self,
         sandbox: Any,
         doc_id: str,
-        mcp_url: str,
         save_path: str,
     ) -> dict[str, Any]:
         """Download DingTalk spreadsheet.
 
-        For spreadsheets, we export as Excel file.
+        For spreadsheets, we export as CSV file.
         """
         try:
-            auth_token = self.auth_token
+            # Step 1: Get all sheets
+            logger.debug(f"[UploadDingTalkToKBTool] Getting sheets for {doc_id}")
 
-            # First get all sheets
-            get_sheets_cmd = (
-                f"curl -s -X POST '{mcp_url}/tools/get_all_sheets' "
-                f'-H "Content-Type: application/json" '
-                f'-H "Authorization: Bearer {auth_token}" '
-                f'--data \'{"nodeId": "' + doc_id + '"}\' '
+            sheets_info = await self._call_backend_mcp_proxy(
+                sandbox=sandbox,
+                service_id="table",
+                tool_name="get_all_sheets",
+                parameters={"nodeId": doc_id},
             )
 
-            result = await sandbox.commands.run(
-                cmd=get_sheets_cmd,
-                cwd="/home/user",
-                timeout=60,
-            )
-
-            if result.exit_code != 0:
-                return {"success": False, "error": f"Failed to get sheets: {result.stderr}"}
-
-            # Parse sheets info
-            try:
-                sheets_info = json.loads(result.stdout)
-                sheets = sheets_info.get("sheets", [])
-            except json.JSONDecodeError:
-                sheets = []
+            sheets = sheets_info.get("sheets", [])
 
             if not sheets:
                 return {"success": False, "error": "No sheets found in spreadsheet"}
 
             # For now, export the first sheet as CSV
-            # In a more complete implementation, we could export all sheets
             first_sheet = sheets[0]
             sheet_id = first_sheet.get("id") or first_sheet.get("name", "Sheet1")
+            sheet_name = first_sheet.get("name", "Sheet1")
 
-            # Get sheet data
-            get_range_cmd = (
-                f"curl -s -X POST '{mcp_url}/tools/get_range' "
-                f'-H "Content-Type: application/json" '
-                f'-H "Authorization: Bearer {auth_token}" '
-                f'--data \'{"nodeId": "' + doc_id + '", "sheetId": "' + sheet_id + '"}\' '
+            logger.debug(f"[UploadDingTalkToKBTool] Getting data from sheet: {sheet_id}")
+
+            # Step 2: Get sheet data
+            sheet_data = await self._call_backend_mcp_proxy(
+                sandbox=sandbox,
+                service_id="table",
+                tool_name="get_range",
+                parameters={"nodeId": doc_id, "sheetId": sheet_id},
             )
 
-            result = await sandbox.commands.run(
-                cmd=get_range_cmd,
-                cwd="/home/user",
-                timeout=120,
-            )
+            values = sheet_data.get("values", [])
 
-            if result.exit_code != 0:
-                return {"success": False, "error": f"Failed to get sheet data: {result.stderr}"}
-
-            # Parse sheet data
-            try:
-                sheet_data = json.loads(result.stdout)
-                values = sheet_data.get("values", [])
-            except json.JSONDecodeError:
-                values = []
-
-            # Convert to CSV and save
+            # Step 3: Convert to CSV and save
             import csv
             import io
 
@@ -726,7 +641,7 @@ Example:
             return {
                 "success": True,
                 "file_path": save_path,
-                "filename": f"dingtalk_table_{doc_id}.csv",
+                "filename": f"{sheet_name}.csv",
                 "file_size": file_info.size,
             }
 
@@ -738,39 +653,24 @@ Example:
         self,
         sandbox: Any,
         doc_id: str,
-        mcp_url: str,
         save_path: str,
     ) -> dict[str, Any]:
         """Download DingTalk AI table (multidimensional table).
 
-        For AI tables, we export as JSON or CSV.
+        For AI tables, we export as JSON.
         """
         try:
-            auth_token = self.auth_token
+            # Step 1: Get all tables in the base
+            logger.debug(f"[UploadDingTalkToKBTool] Getting tables for {doc_id}")
 
-            # Get all tables in the base
-            get_tables_cmd = (
-                f"curl -s -X POST '{mcp_url}/tools/get_tables' "
-                f'-H "Content-Type: application/json" '
-                f'-H "Authorization: Bearer {auth_token}" '
-                f'--data \'{"nodeId": "' + doc_id + '"}\' '
+            tables_info = await self._call_backend_mcp_proxy(
+                sandbox=sandbox,
+                service_id="ai_table",
+                tool_name="get_tables",
+                parameters={"nodeId": doc_id},
             )
 
-            result = await sandbox.commands.run(
-                cmd=get_tables_cmd,
-                cwd="/home/user",
-                timeout=60,
-            )
-
-            if result.exit_code != 0:
-                return {"success": False, "error": f"Failed to get tables: {result.stderr}"}
-
-            # Parse tables info
-            try:
-                tables_info = json.loads(result.stdout)
-                tables = tables_info.get("tables", [])
-            except json.JSONDecodeError:
-                tables = []
+            tables = tables_info.get("tables", [])
 
             if not tables:
                 return {"success": False, "error": "No tables found in AI table"}
@@ -778,31 +678,21 @@ Example:
             # Get records from the first table
             first_table = tables[0]
             table_id = first_table.get("id")
+            table_name = first_table.get("name", "Table1")
 
-            get_records_cmd = (
-                f"curl -s -X POST '{mcp_url}/tools/query_records' "
-                f'-H "Content-Type: application/json" '
-                f'-H "Authorization: Bearer {auth_token}" '
-                f'--data \'{"nodeId": "' + doc_id + '", "tableId": "' + table_id + '"}\' '
+            logger.debug(f"[UploadDingTalkToKBTool] Getting records from table: {table_id}")
+
+            # Step 2: Get records
+            records_data = await self._call_backend_mcp_proxy(
+                sandbox=sandbox,
+                service_id="ai_table",
+                tool_name="query_records",
+                parameters={"nodeId": doc_id, "tableId": table_id},
             )
 
-            result = await sandbox.commands.run(
-                cmd=get_records_cmd,
-                cwd="/home/user",
-                timeout=120,
-            )
+            records = records_data.get("records", [])
 
-            if result.exit_code != 0:
-                return {"success": False, "error": f"Failed to get records: {result.stderr}"}
-
-            # Parse records
-            try:
-                records_data = json.loads(result.stdout)
-                records = records_data.get("records", [])
-            except json.JSONDecodeError:
-                records = []
-
-            # Save as JSON
+            # Step 3: Save as JSON
             if not save_path.endswith(".json"):
                 save_path = save_path.rsplit(".", 1)[0] + ".json"
 
@@ -825,7 +715,7 @@ Example:
             return {
                 "success": True,
                 "file_path": save_path,
-                "filename": f"dingtalk_ai_table_{doc_id}.json",
+                "filename": f"{table_name}.json",
                 "file_size": file_info.size,
             }
 
