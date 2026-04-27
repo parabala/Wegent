@@ -28,6 +28,7 @@ def prepare_load_skill_tool(
     skill_names: list[str],
     user_id: int,
     skill_configs: list[dict] | None = None,
+    shell_type: str = "Chat",
 ) -> Optional[Any]:
     """
     Prepare LoadSkillTool if skills are configured.
@@ -39,10 +40,14 @@ def prepare_load_skill_tool(
     as they will be preloaded via preload_skill_prompt() and don't need to be
     loaded dynamically.
 
+    Skills are filtered by shell_type compatibility using bindShells from
+    skill configuration.
+
     Args:
         skill_names: List of skill names available for this session
         user_id: User ID for skill lookup
         skill_configs: Optional skill configurations containing prompts and preload flags
+        shell_type: Shell type for filtering skills by bindShells (default: "Chat")
 
     Returns:
         LoadSkillTool instance or None if no skills configured
@@ -53,28 +58,58 @@ def prepare_load_skill_tool(
     # Import LoadSkillTool
     from chat_shell.tools.builtin import LoadSkillTool
 
-    # Build skill metadata from skill_configs
+    # Build skill metadata from skill_configs, filtering by bindShells
     skill_metadata = {}
     if skill_configs:
         for config in skill_configs:
             name = config.get("name")
-            if name:
-                skill_metadata[name] = {
-                    "description": config.get("description", ""),
-                    "prompt": config.get("prompt", ""),
-                    "displayName": config.get("displayName", ""),
-                }
+            if not name:
+                continue
 
-    # Create LoadSkillTool with the available skills
+            # Check bindShells compatibility
+            bind_shells = config.get("bindShells")
+            if not bind_shells:
+                bind_shells = ["ClaudeCode"]  # Default for backward compatibility
+
+            if shell_type not in bind_shells:
+                logger.debug(
+                    "[skill_factory] Filtering out skill '%s' from LoadSkillTool: "
+                    "shell_type '%s' not in bindShells %s",
+                    name,
+                    shell_type,
+                    bind_shells,
+                )
+                continue
+
+            skill_metadata[name] = {
+                "description": config.get("description", ""),
+                "prompt": config.get("prompt", ""),
+                "displayName": config.get("displayName", ""),
+            }
+
+    # Filter skill_names to only include compatible skills
+    filtered_skill_names = [name for name in skill_names if name in skill_metadata]
+
+    if not filtered_skill_names:
+        logger.info(
+            "[skill_factory] No compatible skills for shell_type '%s', "
+            "skipping LoadSkillTool creation",
+            shell_type,
+        )
+        return None
+
+    # Create LoadSkillTool with the filtered skills
     load_skill_tool = LoadSkillTool(
         user_id=user_id,
-        skill_names=skill_names,
+        skill_names=filtered_skill_names,
         skill_metadata=skill_metadata,
     )
 
     logger.info(
-        "[skill_factory] Created LoadSkillTool with skills: %s",
-        skill_names,
+        "[skill_factory] Created LoadSkillTool with %d skills for shell_type '%s': %s",
+        len(filtered_skill_names),
+        shell_type,
+        filtered_skill_names,
     )
 
     return load_skill_tool
@@ -220,8 +255,34 @@ async def prepare_skill_tools(
     skill_mcp_configs: dict[str, dict[str, Any]] = {}
     skill_mcp_server_owner: dict[str, str] = {}  # prefixed_server_name -> skill_name
 
-    # Process each skill configuration
+    # Get shell type from task_data for filtering skills by bindShells
+    shell_type = "Chat"  # Default shell type
+    if task_data and task_data.bot and len(task_data.bot) > 0:
+        shell_type = task_data.bot[0].get("shell_type", "Chat")
+
+    # Filter skills by bindShells compatibility
+    filtered_skill_configs = []
     for skill_config in skill_configs:
+        skill_name = skill_config.get("name", "unknown")
+        bind_shells = skill_config.get("bindShells")
+
+        # If bindShells is not specified or empty, default to ["ClaudeCode"] for backward compatibility
+        if not bind_shells:
+            bind_shells = ["ClaudeCode"]
+
+        # Check if current shell_type is in bindShells
+        if shell_type in bind_shells:
+            filtered_skill_configs.append(skill_config)
+        else:
+            logger.info(
+                "[skill_factory] Skipping skill '%s': shell_type '%s' not in bindShells %s",
+                skill_name,
+                shell_type,
+                bind_shells,
+            )
+
+    # Process each skill configuration
+    for skill_config in filtered_skill_configs:
         skill_name = skill_config.get("name", "unknown")
         tool_declarations = skill_config.get("tools", [])
         provider_config = skill_config.get("provider")
