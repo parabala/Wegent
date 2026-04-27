@@ -148,6 +148,7 @@ class TestPrepareSkillToolsWithMcp:
             {
                 "name": "test_skill",
                 "description": "A test skill",
+                "bindShells": ["Chat"],
                 "mcpServers": {
                     "server1": {
                         "type": "stdio",
@@ -193,6 +194,7 @@ class TestPrepareSkillToolsWithMcp:
             {
                 "name": "test_skill",
                 "description": "A test skill",
+                "bindShells": ["Chat"],
                 "mcpServers": {
                     "server1": {
                         "type": "stdio",
@@ -226,6 +228,7 @@ class TestPrepareSkillToolsWithMcp:
             {
                 "name": "test_skill",
                 "description": "A test skill",
+                "bindShells": ["Chat"],
                 "prompt": "Test skill prompt",
                 "mcpServers": {
                     "server1": {
@@ -243,6 +246,7 @@ class TestPrepareSkillToolsWithMcp:
             skill_metadata={
                 "test_skill": {
                     "description": "A test skill",
+                "bindShells": ["Chat"],
                     "prompt": "Test skill prompt",
                 }
             },
@@ -295,6 +299,7 @@ class TestPrepareSkillToolsWithMcp:
             {
                 "name": "test_skill",
                 "description": "A test skill without MCP",
+                "bindShells": ["Chat"],
                 # No mcpServers field
             }
         ]
@@ -322,6 +327,7 @@ class TestPrepareSkillToolsWithMcp:
             {
                 "name": "skill_a",
                 "description": "Skill A",
+                "bindShells": ["Chat"],
                 "mcpServers": {
                     "server_a": {"type": "stdio", "command": "cmd_a"},
                 },
@@ -329,6 +335,7 @@ class TestPrepareSkillToolsWithMcp:
             {
                 "name": "skill_b",
                 "description": "Skill B",
+                "bindShells": ["Chat"],
                 "mcpServers": {
                     "server_b": {"type": "stdio", "command": "cmd_b"},
                 },
@@ -376,6 +383,7 @@ class TestPrepareSkillToolsWithMcp:
             {
                 "name": "skill_a",
                 "description": "Skill A",
+                "bindShells": ["Chat"],
                 "mcpServers": {
                     "server_a": {"type": "stdio", "command": "cmd_a"},
                 },
@@ -383,6 +391,7 @@ class TestPrepareSkillToolsWithMcp:
             {
                 "name": "skill_b",
                 "description": "Skill B",
+                "bindShells": ["Chat"],
                 "mcpServers": {
                     "server_b": {"type": "stdio", "command": "cmd_b"},
                 },
@@ -442,6 +451,7 @@ class TestPrepareSkillToolsWithMcp:
             {
                 "name": "test_skill",
                 "description": "A test skill",
+                "bindShells": ["Chat"],
                 "tools": [{"name": "dummy", "provider": "dummy"}],
             }
         ]

@@ -1279,6 +1279,10 @@ class TaskRequestBuilder:
         if skill_crd.spec.mcpServers:
             skill_data["mcpServers"] = skill_crd.spec.mcpServers
 
+        # Include bindShells for shell type compatibility checking
+        if skill_crd.spec.bindShells:
+            skill_data["bindShells"] = skill_crd.spec.bindShells
+
         is_public_default_runtime_skill = (
             skill.user_id == 0 and skill_crd.metadata.namespace == "default"
         )

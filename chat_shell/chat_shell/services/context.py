@@ -109,10 +109,16 @@ class ChatContext:
                 "preparing_load_skill_tool",
                 {"skill_count": len(self._request.skill_names)},
             )
+            # Get shell type for filtering skills by bindShells
+            shell_type = "Chat"  # Default shell type
+            if self._request.bot and len(self._request.bot) > 0:
+                shell_type = self._request.bot[0].get("shell_type", "Chat")
+
             self._load_skill_tool = prepare_load_skill_tool(
                 skill_names=self._request.skill_names,
                 user_id=self._request.user_id,
                 skill_configs=self._request.skill_configs,
+                shell_type=shell_type,
             )
 
         # Use context manager for database session
