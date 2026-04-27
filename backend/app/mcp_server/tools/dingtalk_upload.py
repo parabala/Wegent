@@ -55,7 +55,9 @@ def _download_file_from_url(url: str, temp_file_path: str) -> int:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
 
-    with requests.get(url, headers=headers, stream=True, timeout=DEFAULT_TIMEOUT) as response:
+    with requests.get(
+        url, headers=headers, stream=True, timeout=DEFAULT_TIMEOUT
+    ) as response:
         response.raise_for_status()
         total_size = 0
         with open(temp_file_path, "wb") as f:
@@ -151,11 +153,15 @@ def upload_file_from_url(
 
         # Determine filename
         if not filename:
-            filename = _get_filename_from_url(download_url, f"document.{default_extension}")
+            filename = _get_filename_from_url(
+                download_url, f"document.{default_extension}"
+            )
 
         # Create temporary file with proper extension
         file_extension = os.path.splitext(filename)[1] or f".{default_extension}"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=file_extension
+        ) as temp_file:
             temp_file_path = temp_file.name
 
         try:
@@ -255,7 +261,9 @@ def upload_content(
 
         # Create temporary file with proper extension
         file_extension = os.path.splitext(filename)[1] or ".md"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=file_extension
+        ) as temp_file:
             temp_file_path = temp_file.name
 
         try:
