@@ -383,7 +383,8 @@ export default function ContextSelector({
     const nonDingtalkContexts = selectedContexts.filter(ctx => ctx.type !== 'dingtalk_doc')
     // Merge with new DingTalk selections
     onContextsChange([...nonDingtalkContexts, ...contexts])
-  }, [selectedContexts, onContextsChange])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedContexts])
 
   // Reset search when popover closes
   useEffect(() => {
