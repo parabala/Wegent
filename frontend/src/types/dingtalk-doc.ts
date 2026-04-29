@@ -41,3 +41,22 @@ export interface DingtalkSyncResult {
   total: number
   sync_time: string
 }
+
+/**
+ * DingTalk document node with selection state
+ * 带选择状态的钉钉文档节点
+ */
+export interface DingtalkDocNodeWithSelection extends DingtalkDocNode {
+  selected?: boolean
+  indeterminate?: boolean
+}
+
+/**
+ * Selection change event for DingTalk documents
+ * 钉钉文档选择变更事件
+ */
+export interface DingtalkDocSelectionChange {
+  node: DingtalkDocNode
+  selected: boolean
+  selectedIds: string[]
+}

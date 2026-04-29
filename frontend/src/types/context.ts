@@ -8,7 +8,7 @@
  *
  * Future types to be added: 'person' | 'bot' | 'team'
  */
-export type ContextType = 'knowledge_base' | 'table' | 'queue_message'
+export type ContextType = 'knowledge_base' | 'table' | 'queue_message' | 'dingtalk_doc'
 
 /**
  * Base interface for all context items
@@ -85,6 +85,24 @@ export interface QueueMessageContext extends BaseContextItem {
 }
 
 /**
+ * DingTalk document context item
+ * 钉钉文档上下文项
+ */
+export interface DingtalkDocContext extends BaseContextItem {
+  type: 'dingtalk_doc'
+  /** DingTalk document node ID */
+  dingtalk_node_id: string
+  /** Document URL */
+  doc_url: string
+  /** Parent node ID */
+  parent_node_id?: string
+  /** Node type: folder, doc, or file */
+  node_type: 'folder' | 'doc' | 'file'
+  /** Workspace ID */
+  workspace_id?: string
+}
+
+/**
  * Union type for all context items
  * 所有上下文项的联合类型
  *
@@ -93,4 +111,4 @@ export interface QueueMessageContext extends BaseContextItem {
  * 2. Create a new interface extending BaseContextItem
  * 3. Add the new interface to this union type
  */
-export type ContextItem = KnowledgeBaseContext | TableContext | QueueMessageContext
+export type ContextItem = KnowledgeBaseContext | TableContext | QueueMessageContext | DingtalkDocContext
