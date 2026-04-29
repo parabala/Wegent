@@ -5,10 +5,10 @@
 'use client'
 
 import React from 'react'
-import { X, Database, Table2, MessageSquare } from 'lucide-react'
+import { X, Database, Table2, MessageSquare, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/hooks/useTranslation'
-import type { ContextItem, QueueMessageContext } from '@/types/context'
+import type { ContextItem, QueueMessageContext, DingtalkDocContext } from '@/types/context'
 import { formatDocumentCount } from '@/lib/i18n-helpers'
 
 interface ContextBadgeProps {
@@ -29,6 +29,8 @@ const getContextIcon = (type: ContextItem['type']) => {
       return Table2
     case 'queue_message':
       return MessageSquare
+    case 'dingtalk_doc':
+      return FileText
     // Future context types will be added here
     // case 'person': return User;
     // case 'bot': return Bot;
@@ -55,20 +57,33 @@ export default function ContextBadge({
         return 'border-blue-500 bg-blue-500/10 text-blue-600'
       case 'queue_message':
         return 'border-orange-500 bg-orange-500/10 text-orange-600'
+      case 'dingtalk_doc':
+        return 'border-teal-500 bg-teal-500/10 text-teal-600'
       default:
         return 'border-primary bg-primary/10 text-primary'
     }
   }
 
-  // Handle badge click - open table URL in new window (only if not disabled)
+  // Handle badge click - open URL in new window for table and dingtalk_doc (only if not disabled)
   const handleBadgeClick = (e: React.MouseEvent) => {
-    if (!disableUrlClick && context.type === 'table' && context.source_config?.url) {
+    if (disableUrlClick) return
+
+    if (context.type === 'table' && context.source_config?.url) {
       e.stopPropagation()
       window.open(context.source_config.url, '_blank', 'noopener,noreferrer')
+    } else if (context.type === 'dingtalk_doc') {
+      const dingtalkContext = context as DingtalkDocContext
+      if (dingtalkContext.doc_url) {
+        e.stopPropagation()
+        window.open(dingtalkContext.doc_url, '_blank', 'noopener,noreferrer')
+      }
     }
   }
 
-  const isClickable = !disableUrlClick && context.type === 'table' && context.source_config?.url
+  const isClickable = !disableUrlClick && (
+    (context.type === 'table' && context.source_config?.url) ||
+    (context.type === 'dingtalk_doc' && (context as DingtalkDocContext).doc_url)
+  )
 
   // Get remove button color based on context type
   const getRemoveButtonColor = () => {
@@ -77,6 +92,8 @@ export default function ContextBadge({
         return 'text-blue-600 hover:text-blue-600 hover:bg-blue-500/20'
       case 'queue_message':
         return 'text-orange-600 hover:text-orange-600 hover:bg-orange-500/20'
+      case 'dingtalk_doc':
+        return 'text-teal-600 hover:text-teal-600 hover:bg-teal-500/20'
       default:
         return 'text-primary hover:text-primary hover:bg-primary/20'
     }
@@ -111,6 +128,11 @@ export default function ContextBadge({
           <span className="text-xs opacity-70 truncate">
             {t('inbox:message.from', { name: (context as QueueMessageContext).senderName })} ·{' '}
             {(context as QueueMessageContext).messageCount} {t('inbox:message.messages_count')}
+          </span>
+        )}
+        {context.type === 'dingtalk_doc' && (
+          <span className="text-xs opacity-70 truncate">
+            {t('knowledge:dingtalk_doc')}
           </span>
         )}
       </div>
