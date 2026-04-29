@@ -29,7 +29,7 @@ import type {
   SubtaskContextBrief,
   TaskType,
 } from '@/types/api'
-import type { ContextItem } from '@/types/context'
+import type { ContextItem, DingtalkDocContext } from '@/types/context'
 import type { SkillRef } from '../../hooks/useSkillSelector'
 
 export interface UseChatStreamHandlersOptions {
@@ -523,7 +523,7 @@ export function useChatStreamHandlers({
         // Each context item contains type and data fields
         // Note: queue_message contexts are handled separately - their content is prepended to the message
         const contextItems: Array<{
-          type: 'knowledge_base' | 'table' | 'selected_documents'
+          type: 'knowledge_base' | 'table' | 'selected_documents' | 'dingtalk_doc'
           data: Record<string, unknown>
         }> = selectedContexts
           .filter(ctx => ctx.type !== 'queue_message')
@@ -535,6 +535,19 @@ export function useChatStreamHandlers({
                   knowledge_id: ctx.id,
                   name: ctx.name,
                   document_count: ctx.document_count,
+                },
+              }
+            }
+            if (ctx.type === 'dingtalk_doc') {
+              const dingtalkCtx = ctx as DingtalkDocContext
+              return {
+                type: 'dingtalk_doc' as const,
+                data: {
+                  dingtalk_node_id: dingtalkCtx.dingtalk_node_id,
+                  name: dingtalkCtx.name,
+                  doc_url: dingtalkCtx.doc_url,
+                  node_type: dingtalkCtx.node_type,
+                  workspace_id: dingtalkCtx.workspace_id,
                 },
               }
             }
@@ -590,10 +603,10 @@ export function useChatStreamHandlers({
         }
 
         // Build pending contexts for immediate display (SubtaskContextBrief format)
-        // This includes attachments, knowledge bases, and tables
+        // This includes attachments, knowledge bases, tables, and dingtalk docs
         const pendingContexts: Array<{
-          id: number
-          context_type: 'attachment' | 'knowledge_base' | 'table'
+          id: number | string
+          context_type: 'attachment' | 'knowledge_base' | 'table' | 'dingtalk_doc'
           name: string
           status: 'pending' | 'ready'
           file_extension?: string
@@ -632,7 +645,7 @@ export function useChatStreamHandlers({
           })
         }
 
-        // Add knowledge bases and tables as contexts
+        // Add knowledge bases, tables, and dingtalk docs as contexts
         for (const ctx of selectedContexts) {
           if (ctx.type === 'knowledge_base') {
             const kbContext = ctx as typeof ctx & { document_count?: number }
@@ -651,6 +664,15 @@ export function useChatStreamHandlers({
               name: ctx.name,
               status: 'ready',
               source_config: tableContext.source_config,
+            })
+          } else if (ctx.type === 'dingtalk_doc') {
+            const dingtalkContext = ctx as DingtalkDocContext
+            pendingContexts.push({
+              id: dingtalkContext.id,
+              context_type: 'dingtalk_doc',
+              name: dingtalkContext.name,
+              status: 'ready',
+              source_config: { url: dingtalkContext.doc_url },
             })
           }
         }
