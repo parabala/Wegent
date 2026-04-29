@@ -103,8 +103,10 @@
       "columnSyncedAt": "Synced At",
       "columnActions": "Actions",
       "openInDingtalk": "Open in DingTalk",
-      "lastModified": "Last modified"
+      "lastModified": "Last modified",
+      "selectedCount": "{{count}} selected"
     },
+    "dingtalk_doc": "DingTalk Doc",
     "groupFilter": {
       "all": "All Groups"
     },

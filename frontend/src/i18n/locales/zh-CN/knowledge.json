@@ -103,8 +103,10 @@
       "columnSyncedAt": "同步时间",
       "columnActions": "操作",
       "openInDingtalk": "在钉钉中打开",
-      "lastModified": "最近修改"
+      "lastModified": "最近修改",
+      "selectedCount": "已选择 {{count}} 个"
     },
+    "dingtalk_doc": "钉钉文档",
     "groupFilter": {
       "all": "全部分组"
     },
