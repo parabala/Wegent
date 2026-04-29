@@ -5,7 +5,7 @@
 'use client'
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
-import { Check, Database, ArrowRight, Users, Table2, User, Building2 } from 'lucide-react'
+import { Check, Database, ArrowRight, Users, Table2, User, Building2, FileText } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import Link from 'next/link'
 import {
@@ -23,7 +23,8 @@ import { taskKnowledgeBaseApi } from '@/apis/task-knowledge-base'
 import { tableApi, TableDocument } from '@/apis/table'
 import type { KnowledgeBase } from '@/types/api'
 import type { BoundKnowledgeBaseDetail } from '@/types/task-knowledge-base'
-import type { ContextItem, KnowledgeBaseContext, TableContext } from '@/types/context'
+import type { ContextItem, KnowledgeBaseContext, TableContext, DingtalkDocContext } from '@/types/context'
+import { DingtalkDocSelector } from './DingtalkDocSelector'
 import { useTranslation } from '@/hooks/useTranslation'
 import { useOrganizationNamespace } from '@/hooks/useOrganizationNamespace'
 import { cn } from '@/lib/utils'
@@ -376,6 +377,14 @@ export default function ContextSelector({
     }
   }
 
+  // Handle DingTalk document selection change
+  const handleDingtalkDocSelectionChange = useCallback((contexts: DingtalkDocContext[]) => {
+    // Get current non-DingTalk contexts
+    const nonDingtalkContexts = selectedContexts.filter(ctx => ctx.type !== 'dingtalk_doc')
+    // Merge with new DingTalk selections
+    onContextsChange([...nonDingtalkContexts, ...contexts])
+  }, [selectedContexts, onContextsChange])
+
   // Reset search when popover closes
   useEffect(() => {
     if (!open) {
@@ -427,6 +436,17 @@ export default function ContextSelector({
             >
               <Table2 className="w-3.5 h-3.5 mr-1.5 data-[state=active]:text-blue-500" />
               {t('knowledge:table.title')}
+            </TabsTrigger>
+            <TabsTrigger
+              value="dingtalk"
+              className={cn(
+                'flex-1 rounded-none border-b-2 border-transparent h-full text-sm font-medium',
+                'data-[state=active]:border-teal-500 data-[state=active]:text-teal-600',
+                'data-[state=inactive]:text-text-muted hover:text-text-primary'
+              )}
+            >
+              <FileText className="w-3.5 h-3.5 mr-1.5" />
+              {t('knowledge:document.sidebar.dingtalk')}
             </TabsTrigger>
           </TabsList>
 
@@ -745,6 +765,30 @@ export default function ContextSelector({
                     </CommandGroup>
                   </>
                 )}
+              </CommandList>
+            </Command>
+          </TabsContent>
+
+          {/* DingTalk Docs Tab */}
+          <TabsContent value="dingtalk" className="flex-1 min-h-0 overflow-hidden m-0">
+            <Command className="border-0 flex flex-col flex-1 min-h-0 overflow-hidden">
+              <CommandInput
+                placeholder={t('knowledge:search_placeholder')}
+                value={searchValue}
+                onValueChange={setSearchValue}
+                className={cn(
+                  'h-9 rounded-none border-b border-border flex-shrink-0',
+                  'placeholder:text-text-muted text-sm'
+                )}
+              />
+              <CommandList className="min-h-[36px] max-h-[300px] overflow-y-auto flex-1">
+                <DingtalkDocSelector
+                  selectedContexts={selectedContexts.filter(
+                    (ctx): ctx is DingtalkDocContext => ctx.type === 'dingtalk_doc'
+                  )}
+                  onSelectionChange={handleDingtalkDocSelectionChange}
+                  searchValue={searchValue}
+                />
               </CommandList>
             </Command>
           </TabsContent>
