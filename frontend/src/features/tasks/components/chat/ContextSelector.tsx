@@ -550,7 +550,7 @@ export default function ContextSelector({
           </TabsList>
 
           {/* Knowledge Base Tab */}
-          <TabsContent value="knowledge" className="flex-1 min-h-0 overflow-hidden m-0 flex flex-col">
+          <TabsContent value="knowledge" className="flex-1 min-h-0 overflow-y-auto m-0 flex flex-col">
             <Command className="border-0 flex flex-col flex-shrink-0">
               <CommandInput
                 placeholder={t('knowledge:search_placeholder')}
@@ -561,7 +561,7 @@ export default function ContextSelector({
                   'placeholder:text-text-muted text-sm'
                 )}
               />
-              <CommandList className="min-h-[36px] max-h-[180px] overflow-y-auto flex-1">
+              <CommandList className="min-h-[36px] overflow-visible">
                 {loading || organizationNamespaceLoading ? (
                   <div className="py-4 px-3 text-center text-sm text-text-muted">
                     {t('common:actions.loading')}
@@ -796,7 +796,7 @@ export default function ContextSelector({
                 )}
               </div>
               {/* DingTalk content */}
-              <div className="overflow-y-auto max-h-[160px]">
+              <div className="overflow-visible">
                 {dingtalkLoading ? (
                   <div className="py-3 px-4 text-center text-xs text-text-muted">
                     {t('common:actions.loading')}
