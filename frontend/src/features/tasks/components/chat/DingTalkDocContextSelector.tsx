@@ -31,7 +31,7 @@ import type { DingtalkDocNode } from '@/types/dingtalk-doc'
 import type { DingTalkDocContext } from '@/types/context'
 
 /** Collect all descendant node IDs (including self) from a node. */
-function collectDescendants(node: DingtalkDocNode): string[] {
+export function collectDescendants(node: DingtalkDocNode): string[] {
   const ids: string[] = [node.dingtalk_node_id]
   if (node.children) {
     for (const child of node.children) {
@@ -56,7 +56,7 @@ function collectDocNodes(node: DingtalkDocNode): DingtalkDocNode[] {
 }
 
 /** Check if all nodes under a tree node are selected. */
-function isNodeFullySelected(node: DingtalkDocNode, selected: Set<string>): boolean {
+export function isNodeFullySelected(node: DingtalkDocNode, selected: Set<string>): boolean {
   if (!selected.has(node.dingtalk_node_id)) return false
   if (node.children) {
     return node.children.every(child => isNodeFullySelected(child, selected))
@@ -65,7 +65,7 @@ function isNodeFullySelected(node: DingtalkDocNode, selected: Set<string>): bool
 }
 
 /** Check if some (but not all) nodes under a tree node are selected. */
-function isNodePartiallySelected(node: DingtalkDocNode, selected: Set<string>): boolean {
+export function isNodePartiallySelected(node: DingtalkDocNode, selected: Set<string>): boolean {
   const allIds = collectDescendants(node)
   const selectedCount = allIds.filter(id => selected.has(id)).length
   return selectedCount > 0 && selectedCount < allIds.length
@@ -80,7 +80,7 @@ interface TreeNodeItemProps {
 }
 
 /** Recursive tree node item with checkbox. */
-function TreeNodeItem({ node, level, selectedIds, onToggle, searchQuery }: TreeNodeItemProps) {
+export function DingtalkContextTreeNode({ node, level, selectedIds, onToggle, searchQuery }: TreeNodeItemProps) {
   const isFolder = node.node_type === 'folder'
   const [isExpanded, setIsExpanded] = useState(level === 0)
   const isSelected = isFolder
@@ -214,7 +214,7 @@ function TreeNodeItem({ node, level, selectedIds, onToggle, searchQuery }: TreeN
       {isFolder && hasChildren && isExpanded && (
         <div>
           {node.children!.map(child => (
-            <TreeNodeItem
+            <DingtalkContextTreeNode
               key={child.dingtalk_node_id}
               node={child}
               level={level + 1}
@@ -457,7 +457,7 @@ export function DingTalkDocContextSelector({
           </div>
         ) : (
           nodes.map(node => (
-            <TreeNodeItem
+            <DingtalkContextTreeNode
               key={node.dingtalk_node_id}
               node={node}
               level={0}
