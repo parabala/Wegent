@@ -15,6 +15,7 @@ import {
   Building2,
   MessageSquareText,
   RefreshCw,
+  Search,
 } from 'lucide-react'
 import { dingtalkDocApi } from '@/apis/dingtalk-doc'
 import type { DingtalkDocNode } from '@/types/dingtalk-doc'
@@ -35,7 +36,12 @@ import { taskKnowledgeBaseApi } from '@/apis/task-knowledge-base'
 import { tableApi, TableDocument } from '@/apis/table'
 import type { KnowledgeBase } from '@/types/api'
 import type { BoundKnowledgeBaseDetail } from '@/types/task-knowledge-base'
-import type { ContextItem, KnowledgeBaseContext, TableContext, DingTalkDocContext } from '@/types/context'
+import type {
+  ContextItem,
+  KnowledgeBaseContext,
+  TableContext,
+  DingTalkDocContext,
+} from '@/types/context'
 import { useTranslation } from '@/hooks/useTranslation'
 import { useOrganizationNamespace } from '@/hooks/useOrganizationNamespace'
 import { cn } from '@/lib/utils'
@@ -162,6 +168,7 @@ export default function ContextSelector({
   const [dingtalkError, setDingtalkError] = useState<string | null>(null)
   const [dingtalkConfigured, setDingtalkConfigured] = useState(true)
   const [dingtalkLastSyncedAt, setDingtalkLastSyncedAt] = useState<string | null>(null)
+  const [dingtalkSearchQuery, setDingtalkSearchQuery] = useState('')
   const {
     organizationNamespace,
     loading: organizationNamespaceLoading,
@@ -443,14 +450,17 @@ export default function ContextSelector({
   )
 
   /** Build a DingTalkDocContext from a DingtalkDocNode. */
-  const buildDingtalkContext = useCallback((node: DingtalkDocNode): DingTalkDocContext => ({
-    id: node.dingtalk_node_id,
-    name: node.name,
-    type: 'dingtalk_doc',
-    doc_url: node.doc_url,
-    node_type: node.node_type as 'folder' | 'doc' | 'file',
-    dingtalk_node_id: node.dingtalk_node_id,
-  }), [])
+  const buildDingtalkContext = useCallback(
+    (node: DingtalkDocNode): DingTalkDocContext => ({
+      id: node.dingtalk_node_id,
+      name: node.name,
+      type: 'dingtalk_doc',
+      doc_url: node.doc_url,
+      node_type: node.node_type as 'folder' | 'doc' | 'file',
+      dingtalk_node_id: node.dingtalk_node_id,
+    }),
+    []
+  )
 
   /** Handle DingTalk node toggle: folder selects/deselects all descendants, doc/file toggles individually. */
   const handleDingtalkToggle = useCallback(
@@ -492,13 +502,21 @@ export default function ContextSelector({
         }
       }
     },
-    [selectedDingTalkIds, buildDingtalkContext, onSelect, onDeselect, onSelectMultiple, onDeselectMultiple]
+    [
+      selectedDingTalkIds,
+      buildDingtalkContext,
+      onSelect,
+      onDeselect,
+      onSelectMultiple,
+      onDeselectMultiple,
+    ]
   )
 
   // Reset search when popover closes
   useEffect(() => {
     if (!open) {
       setSearchValue('')
+      setDingtalkSearchQuery('')
       setActiveTab('knowledge')
     }
   }, [open])
@@ -508,9 +526,8 @@ export default function ContextSelector({
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         className={cn(
-          'p-0 w-auto min-w-[320px] max-w-[400px] border border-border bg-base',
+          'p-0 w-[340px] border border-border bg-base',
           'shadow-xl rounded-xl overflow-hidden',
-          'max-h-[var(--radix-popover-content-available-height,400px)]',
           'flex flex-col'
         )}
         align="start"
@@ -524,6 +541,7 @@ export default function ContextSelector({
           onValueChange={setActiveTab}
           className="flex flex-col flex-1 min-h-0"
         >
+          {/* Tab list: Knowledge | Table | DingTalk — fixed height, no flex tricks needed */}
           <TabsList className="w-full rounded-none border-b border-border bg-transparent h-9 p-0 flex-shrink-0">
             <TabsTrigger
               value="knowledge"
@@ -544,22 +562,26 @@ export default function ContextSelector({
                 'data-[state=inactive]:text-text-muted hover:text-text-primary'
               )}
             >
-              <Table2 className="w-3.5 h-3.5 mr-1.5 data-[state=active]:text-blue-500" />
+              <Table2 className="w-3.5 h-3.5 mr-1.5" />
               {t('knowledge:table.title')}
+            </TabsTrigger>
+            <TabsTrigger
+              value="dingtalk"
+              className={cn(
+                'flex-1 rounded-none border-b-2 border-transparent h-full text-sm font-medium',
+                'data-[state=active]:border-orange-500 data-[state=active]:text-orange-600',
+                'data-[state=inactive]:text-text-muted hover:text-text-primary'
+              )}
+              data-testid="context-selector-dingtalk-tab"
+            >
+              <MessageSquareText className="w-3.5 h-3.5 mr-1.5" />
+              {t('chat:dingtalkDocs.tabTitle')}
             </TabsTrigger>
           </TabsList>
 
-          {/* Knowledge Base Tab:
-              Layout strategy: Command (flex-1 min-h-0) fills the space that remains after
-              DingTalk section (flex-shrink-0) reserves its natural height.
-              TabsContent uses overflow-hidden — no external scroll needed because flex
-              distributes the height correctly so both sections always fit.
-              This is the cross-browser safe approach (Chrome, Edge, Safari, Firefox). */}
-          <TabsContent value="knowledge" className="flex-1 min-h-0 overflow-hidden m-0 flex flex-col">
-            {/* Command takes remaining space after DingTalk.
-                h-auto overrides Command's built-in h-full default which would otherwise
-                fill 100% of TabsContent, crowding out the DingTalk section below. */}
-            <Command className="border-0 flex flex-col flex-1 min-h-0 h-auto">
+          {/* Knowledge Base Tab */}
+          <TabsContent value="knowledge" className="m-0">
+            <Command className="border-0 flex flex-col">
               <CommandInput
                 placeholder={t('knowledge:search_placeholder')}
                 value={searchValue}
@@ -569,9 +591,7 @@ export default function ContextSelector({
                   'placeholder:text-text-muted text-sm'
                 )}
               />
-              {/* max-h-none overrides CommandList's built-in max-h-[300px] default so the
-                  list respects the flex-allocated height instead of a fixed cap. */}
-              <CommandList className="flex-1 min-h-[36px] overflow-y-auto max-h-none">
+              <CommandList className="max-h-[300px] overflow-y-auto">
                 {loading || organizationNamespaceLoading ? (
                   <div className="py-4 px-3 text-center text-sm text-text-muted">
                     {t('common:actions.loading')}
@@ -780,100 +800,11 @@ export default function ContextSelector({
                 )}
               </CommandList>
             </Command>
-
-            {/* DingTalk Docs section - peer to personal/group/org knowledge bases */}
-            <div className="border-t border-border flex flex-col flex-shrink-0">
-              {/* Section header */}
-              <div className="flex items-center justify-between px-3 py-1.5 flex-shrink-0">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
-                  <MessageSquareText className="w-3 h-3 text-orange-500" />
-                  {t('chat:dingtalkDocs.tabTitle')}
-                </div>
-                {dingtalkConfigured && (
-                  <button
-                    type="button"
-                    onClick={handleDingtalkSync}
-                    disabled={dingtalkSyncing}
-                    className={cn(
-                      'flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors',
-                      dingtalkSyncing && 'opacity-50 cursor-not-allowed'
-                    )}
-                    data-testid="context-selector-dingtalk-sync"
-                  >
-                    <RefreshCw className={cn('w-3 h-3', dingtalkSyncing && 'animate-spin')} />
-                    {dingtalkSyncing ? t('chat:dingtalkDocs.syncing') : t('chat:dingtalkDocs.sync')}
-                  </button>
-                )}
-              </div>
-              {/* DingTalk content — bounded height so tree scrolls independently */}
-              <div className="overflow-y-auto max-h-[120px]">
-                {dingtalkLoading ? (
-                  <div className="py-3 px-4 text-center text-xs text-text-muted">
-                    {t('common:actions.loading')}
-                  </div>
-                ) : !dingtalkConfigured ? (
-                  <div className="py-3 px-4 text-center space-y-1">
-                    <p className="text-xs text-text-muted">{t('chat:dingtalkDocs.notConfigured')}</p>
-                    <a
-                      href="/settings/integrations"
-                      className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
-                    >
-                      {t('chat:dingtalkDocs.goToConfigure')}
-                    </a>
-                  </div>
-                ) : dingtalkError ? (
-                  <div className="py-3 px-4 text-center space-y-1">
-                    <p className="text-xs text-red-500">{dingtalkError}</p>
-                    <button
-                      onClick={fetchDingtalkDocs}
-                      className="text-xs text-primary hover:underline"
-                    >
-                      {t('common:actions.retry')}
-                    </button>
-                  </div>
-                ) : dingtalkNodes.length === 0 ? (
-                  <div className="py-3 px-4 text-center space-y-1">
-                    <p className="text-xs text-text-muted">{t('chat:dingtalkDocs.empty')}</p>
-                    <button
-                      type="button"
-                      onClick={handleDingtalkSync}
-                      disabled={dingtalkSyncing}
-                      className="text-xs text-primary hover:text-primary/80 font-medium transition-colors disabled:opacity-50"
-                    >
-                      {dingtalkSyncing ? t('chat:dingtalkDocs.syncing') : t('chat:dingtalkDocs.syncNow')}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="py-1 px-1">
-                    {dingtalkNodes.map(node => (
-                      <DingtalkContextTreeNode
-                        key={node.dingtalk_node_id}
-                        node={node}
-                        level={0}
-                        selectedIds={selectedDingTalkIds}
-                        onToggle={handleDingtalkToggle}
-                        searchQuery=""
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* Last synced info */}
-              {dingtalkConfigured && dingtalkLastSyncedAt && (
-                <div className="px-3 py-1 border-t border-border">
-                  <span className="text-xs text-text-muted">
-                    {t('chat:dingtalkDocs.lastSynced', {
-                      time: new Date(dingtalkLastSyncedAt).toLocaleString(),
-                    })}
-                  </span>
-                </div>
-              )}
-            </div>
           </TabsContent>
 
           {/* Table Tab */}
-          <TabsContent value="table" className="flex-1 min-h-0 overflow-hidden m-0">
-            <Command className="border-0 flex flex-col flex-1 min-h-0 overflow-hidden">
+          <TabsContent value="table" className="m-0">
+            <Command className="border-0 flex flex-col">
               <CommandInput
                 placeholder={t('knowledge:search_placeholder')}
                 value={searchValue}
@@ -883,7 +814,7 @@ export default function ContextSelector({
                   'placeholder:text-text-muted text-sm'
                 )}
               />
-              <CommandList className="min-h-[36px] max-h-[300px] overflow-y-auto flex-1">
+              <CommandList className="max-h-[300px] overflow-y-auto">
                 {tableLoading ? (
                   <div className="py-4 px-3 text-center text-sm text-text-muted">
                     {t('common:actions.loading')}
@@ -965,6 +896,105 @@ export default function ContextSelector({
                 )}
               </CommandList>
             </Command>
+          </TabsContent>
+
+          {/* DingTalk Docs Tab */}
+          <TabsContent value="dingtalk" className="m-0">
+            {/* Search input */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
+              <Search className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+              <input
+                type="text"
+                value={dingtalkSearchQuery}
+                onChange={event => setDingtalkSearchQuery(event.target.value)}
+                placeholder={t('chat:dingtalkDocs.searchPlaceholder')}
+                className="flex-1 text-sm bg-transparent outline-none text-text-primary placeholder:text-text-muted"
+                data-testid="context-selector-dingtalk-search-input"
+              />
+            </div>
+
+            {/* Sync toolbar */}
+            <div className="flex items-center justify-between px-3 h-9 border-b border-border">
+              <span className="text-xs text-text-muted">
+                {dingtalkConfigured && dingtalkLastSyncedAt
+                  ? t('chat:dingtalkDocs.lastSynced', {
+                      time: new Date(dingtalkLastSyncedAt).toLocaleString(),
+                    })
+                  : null}
+              </span>
+              {dingtalkConfigured && (
+                <button
+                  type="button"
+                  onClick={handleDingtalkSync}
+                  disabled={dingtalkSyncing}
+                  className={cn(
+                    'flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors',
+                    dingtalkSyncing && 'opacity-50 cursor-not-allowed'
+                  )}
+                  data-testid="context-selector-dingtalk-sync"
+                >
+                  <RefreshCw className={cn('w-3 h-3', dingtalkSyncing && 'animate-spin')} />
+                  {dingtalkSyncing ? t('chat:dingtalkDocs.syncing') : t('chat:dingtalkDocs.sync')}
+                </button>
+              )}
+            </div>
+
+            {/* DingTalk content */}
+            <div className="max-h-[300px] overflow-y-auto">
+              {dingtalkLoading ? (
+                <div className="py-6 px-4 text-center text-sm text-text-muted">
+                  {t('common:actions.loading')}
+                </div>
+              ) : !dingtalkConfigured ? (
+                <div className="py-6 px-4 text-center space-y-3">
+                  <p className="text-sm text-text-muted">{t('chat:dingtalkDocs.notConfigured')}</p>
+                  <a
+                    href="/settings/integrations"
+                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium transition-colors"
+                  >
+                    {t('chat:dingtalkDocs.goToConfigure')}
+                  </a>
+                </div>
+              ) : dingtalkError ? (
+                <div className="py-6 px-4 text-center space-y-2">
+                  <p className="text-sm text-red-500">{dingtalkError}</p>
+                  <button
+                    onClick={fetchDingtalkDocs}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {t('common:actions.retry')}
+                  </button>
+                </div>
+              ) : dingtalkNodes.length === 0 ? (
+                <div className="py-6 px-4 text-center space-y-3">
+                  <p className="text-sm text-text-muted">{t('chat:dingtalkDocs.empty')}</p>
+                  <button
+                    type="button"
+                    onClick={handleDingtalkSync}
+                    disabled={dingtalkSyncing}
+                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw className={cn('w-3.5 h-3.5', dingtalkSyncing && 'animate-spin')} />
+                    {dingtalkSyncing
+                      ? t('chat:dingtalkDocs.syncing')
+                      : t('chat:dingtalkDocs.syncNow')}
+                  </button>
+                </div>
+              ) : (
+                <div className="py-1 px-1">
+                  {dingtalkNodes.map(node => (
+                    <DingtalkContextTreeNode
+                      key={node.dingtalk_node_id}
+                      node={node}
+                      level={0}
+                      selectedIds={selectedDingTalkIds}
+                      onToggle={handleDingtalkToggle}
+                      searchQuery={dingtalkSearchQuery}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </TabsContent>
         </Tabs>
       </PopoverContent>

@@ -70,7 +70,11 @@ export default function ContextBadge({
       e.stopPropagation()
       window.open(context.source_config.url, '_blank', 'noopener,noreferrer')
     }
-    if (!disableUrlClick && context.type === 'dingtalk_doc' && (context as DingTalkDocContext).doc_url) {
+    if (
+      !disableUrlClick &&
+      context.type === 'dingtalk_doc' &&
+      (context as DingTalkDocContext).doc_url
+    ) {
       e.stopPropagation()
       window.open((context as DingTalkDocContext).doc_url, '_blank', 'noopener,noreferrer')
     }
@@ -78,7 +82,9 @@ export default function ContextBadge({
 
   const isClickable =
     (!disableUrlClick && context.type === 'table' && context.source_config?.url) ||
-    (!disableUrlClick && context.type === 'dingtalk_doc' && !!(context as DingTalkDocContext).doc_url)
+    (!disableUrlClick &&
+      context.type === 'dingtalk_doc' &&
+      !!(context as DingTalkDocContext).doc_url)
 
   // Get remove button color based on context type
   const getRemoveButtonColor = () => {
@@ -126,9 +132,7 @@ export default function ContextBadge({
           </span>
         )}
         {context.type === 'dingtalk_doc' && (
-          <span className="text-xs opacity-70 truncate">
-            {t('chat:dingtalkDocs.docBadgeHint')}
-          </span>
+          <span className="text-xs opacity-70 truncate">{t('chat:dingtalkDocs.docBadgeHint')}</span>
         )}
       </div>
       <Button

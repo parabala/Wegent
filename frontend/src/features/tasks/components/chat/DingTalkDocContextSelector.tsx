@@ -41,20 +41,6 @@ export function collectDescendants(node: DingtalkDocNode): string[] {
   return ids
 }
 
-/** Collect all descendant document/file nodes (not folders) for creating context items. */
-function collectDocNodes(node: DingtalkDocNode): DingtalkDocNode[] {
-  const docs: DingtalkDocNode[] = []
-  if (node.node_type !== 'folder') {
-    docs.push(node)
-  }
-  if (node.children) {
-    for (const child of node.children) {
-      docs.push(...collectDocNodes(child))
-    }
-  }
-  return docs
-}
-
 /** Check if all nodes under a tree node are selected. */
 export function isNodeFullySelected(node: DingtalkDocNode, selected: Set<string>): boolean {
   if (!selected.has(node.dingtalk_node_id)) return false
@@ -80,7 +66,13 @@ interface TreeNodeItemProps {
 }
 
 /** Recursive tree node item with checkbox. */
-export function DingtalkContextTreeNode({ node, level, selectedIds, onToggle, searchQuery }: TreeNodeItemProps) {
+export function DingtalkContextTreeNode({
+  node,
+  level,
+  selectedIds,
+  onToggle,
+  searchQuery,
+}: TreeNodeItemProps) {
   const isFolder = node.node_type === 'folder'
   const [isExpanded, setIsExpanded] = useState(level === 0)
   const isSelected = isFolder
@@ -94,13 +86,10 @@ export function DingtalkContextTreeNode({ node, level, selectedIds, onToggle, se
     if (searchQuery) setIsExpanded(true)
   }, [searchQuery])
 
-  const handleToggle = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
-      setIsExpanded(prev => !prev)
-    },
-    []
-  )
+  const handleToggle = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    setIsExpanded(prev => !prev)
+  }, [])
 
   const handleCheck = useCallback(
     (e: React.MouseEvent) => {
@@ -111,8 +100,7 @@ export function DingtalkContextTreeNode({ node, level, selectedIds, onToggle, se
   )
 
   // Filter by search query
-  const matchesSearch =
-    !searchQuery || node.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const matchesSearch = !searchQuery || node.name.toLowerCase().includes(searchQuery.toLowerCase())
   const childrenMatchSearch =
     searchQuery && node.children?.some(child => collectDescendants(child).length > 0)
 
@@ -270,7 +258,7 @@ export function DingTalkDocContextSelector({
       setLastSyncedAt(status.last_synced_at)
     } catch (err) {
       console.error('Failed to fetch DingTalk docs:', err)
-      setError(t('dingtalkDocs.loadFailed'))
+      setError(t('chat:dingtalkDocs.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -288,7 +276,7 @@ export function DingTalkDocContextSelector({
       await fetchDocs()
     } catch (err) {
       console.error('Failed to sync DingTalk docs:', err)
-      setError(t('dingtalkDocs.syncFailed'))
+      setError(t('chat:dingtalkDocs.syncFailed'))
     } finally {
       setSyncing(false)
     }
@@ -373,12 +361,12 @@ export function DingTalkDocContextSelector({
   if (!isConfigured) {
     return (
       <div className="py-6 px-4 text-center space-y-3">
-        <p className="text-sm text-text-muted">{t('dingtalkDocs.notConfigured')}</p>
+        <p className="text-sm text-text-muted">{t('chat:dingtalkDocs.notConfigured')}</p>
         <a
           href="/settings/integrations"
           className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium transition-colors"
         >
-          {t('dingtalkDocs.goToConfigure')}
+          {t('chat:dingtalkDocs.goToConfigure')}
           <ExternalLink className="w-3.5 h-3.5" />
         </a>
       </div>
@@ -405,7 +393,7 @@ export function DingTalkDocContextSelector({
           type="text"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
-          placeholder={t('dingtalkDocs.searchPlaceholder')}
+          placeholder={t('chat:dingtalkDocs.searchPlaceholder')}
           className="flex-1 text-sm bg-transparent outline-none text-text-primary placeholder:text-text-muted"
           data-testid="dingtalk-search-input"
         />
@@ -415,13 +403,13 @@ export function DingTalkDocContextSelector({
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border flex-shrink-0">
         <span className="text-xs text-text-muted">
           {lastSyncedAt
-            ? t('dingtalkDocs.lastSynced', {
+            ? t('chat:dingtalkDocs.lastSynced', {
                 time: new Date(lastSyncedAt).toLocaleString(),
               })
-            : t('dingtalkDocs.neverSynced')}
+            : t('chat:dingtalkDocs.neverSynced')}
           {selectedDocCount > 0 && (
             <span className="ml-2 text-primary font-medium">
-              {t('dingtalkDocs.selectedCount', { count: selectedDocCount })}
+              {t('chat:dingtalkDocs.selectedCount', { count: selectedDocCount })}
             </span>
           )}
         </span>
@@ -436,7 +424,7 @@ export function DingTalkDocContextSelector({
           data-testid="dingtalk-sync-button"
         >
           <RefreshCw className={cn('w-3 h-3', syncing && 'animate-spin')} />
-          {syncing ? t('dingtalkDocs.syncing') : t('dingtalkDocs.sync')}
+          {syncing ? t('chat:dingtalkDocs.syncing') : t('chat:dingtalkDocs.sync')}
         </button>
       </div>
 
@@ -444,7 +432,7 @@ export function DingTalkDocContextSelector({
       <div className="overflow-y-auto flex-1 max-h-[260px] py-1 px-1">
         {nodes.length === 0 ? (
           <div className="py-6 px-4 text-center space-y-3">
-            <p className="text-sm text-text-muted">{t('dingtalkDocs.empty')}</p>
+            <p className="text-sm text-text-muted">{t('chat:dingtalkDocs.empty')}</p>
             <button
               type="button"
               onClick={handleSync}
@@ -452,7 +440,7 @@ export function DingTalkDocContextSelector({
               className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium transition-colors disabled:opacity-50"
             >
               <RefreshCw className={cn('w-3.5 h-3.5', syncing && 'animate-spin')} />
-              {syncing ? t('dingtalkDocs.syncing') : t('dingtalkDocs.syncNow')}
+              {syncing ? t('chat:dingtalkDocs.syncing') : t('chat:dingtalkDocs.syncNow')}
             </button>
           </div>
         ) : (
@@ -477,10 +465,10 @@ export function DingTalkDocContextSelector({
  * Used by ContextSelector to bridge the generic ContextItem type to the
  * Set<string> format required by DingTalkDocContextSelector.
  */
-export function getDingTalkSelectedIds(selectedContexts: { type: string; id: number | string }[]): Set<string> {
+export function getDingTalkSelectedIds(
+  selectedContexts: { type: string; id: number | string }[]
+): Set<string> {
   return new Set(
-    selectedContexts
-      .filter(ctx => ctx.type === 'dingtalk_doc')
-      .map(ctx => String(ctx.id))
+    selectedContexts.filter(ctx => ctx.type === 'dingtalk_doc').map(ctx => String(ctx.id))
   )
 }
