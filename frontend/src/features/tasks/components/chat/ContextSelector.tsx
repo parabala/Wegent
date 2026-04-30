@@ -5,7 +5,16 @@
 'use client'
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
-import { Check, Database, ArrowRight, Users, Table2, User, Building2 } from 'lucide-react'
+import {
+  Check,
+  Database,
+  ArrowRight,
+  Users,
+  Table2,
+  User,
+  Building2,
+  MessageSquareText,
+} from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import Link from 'next/link'
 import {
@@ -23,12 +32,16 @@ import { taskKnowledgeBaseApi } from '@/apis/task-knowledge-base'
 import { tableApi, TableDocument } from '@/apis/table'
 import type { KnowledgeBase } from '@/types/api'
 import type { BoundKnowledgeBaseDetail } from '@/types/task-knowledge-base'
-import type { ContextItem, KnowledgeBaseContext, TableContext } from '@/types/context'
+import type { ContextItem, KnowledgeBaseContext, TableContext, DingTalkDocContext } from '@/types/context'
 import { useTranslation } from '@/hooks/useTranslation'
 import { useOrganizationNamespace } from '@/hooks/useOrganizationNamespace'
 import { cn } from '@/lib/utils'
 import { formatDocumentCount } from '@/lib/i18n-helpers'
 import { getKnowledgeBaseGroup } from '@/utils/knowledge-base-grouping'
+import {
+  DingTalkDocContextSelector,
+  getDingTalkSelectedIds,
+} from './DingTalkDocContextSelector'
 
 interface GroupedKnowledgeBases {
   personal: KnowledgeBase[]
@@ -376,6 +389,48 @@ export default function ContextSelector({
     }
   }
 
+  // Compute the set of selected DingTalk node IDs for DingTalkDocContextSelector
+  const selectedDingTalkIds = useMemo(
+    () => getDingTalkSelectedIds(selectedContexts),
+    [selectedContexts]
+  )
+
+  const handleDingTalkSelect = useCallback(
+    (context: DingTalkDocContext) => {
+      onSelect(context)
+    },
+    [onSelect]
+  )
+
+  const handleDingTalkDeselect = useCallback(
+    (id: string) => {
+      onDeselect(id)
+    },
+    [onDeselect]
+  )
+
+  const handleDingTalkSelectMultiple = useCallback(
+    (contexts: DingTalkDocContext[]) => {
+      if (onSelectMultiple) {
+        onSelectMultiple(contexts)
+      } else {
+        contexts.forEach(ctx => onSelect(ctx))
+      }
+    },
+    [onSelect, onSelectMultiple]
+  )
+
+  const handleDingTalkDeselectMultiple = useCallback(
+    (ids: string[]) => {
+      if (onDeselectMultiple) {
+        onDeselectMultiple(ids)
+      } else {
+        ids.forEach(id => onDeselect(id))
+      }
+    },
+    [onDeselect, onDeselectMultiple]
+  )
+
   // Reset search when popover closes
   useEffect(() => {
     if (!open) {
@@ -427,6 +482,18 @@ export default function ContextSelector({
             >
               <Table2 className="w-3.5 h-3.5 mr-1.5 data-[state=active]:text-blue-500" />
               {t('knowledge:table.title')}
+            </TabsTrigger>
+            <TabsTrigger
+              value="dingtalk"
+              className={cn(
+                'flex-1 rounded-none border-b-2 border-transparent h-full text-sm font-medium',
+                'data-[state=active]:border-orange-500 data-[state=active]:text-orange-600',
+                'data-[state=inactive]:text-text-muted hover:text-text-primary'
+              )}
+              data-testid="context-selector-dingtalk-tab"
+            >
+              <MessageSquareText className="w-3.5 h-3.5 mr-1.5" />
+              {t('chat:dingtalkDocs.tabTitle')}
             </TabsTrigger>
           </TabsList>
 
@@ -747,6 +814,17 @@ export default function ContextSelector({
                 )}
               </CommandList>
             </Command>
+          </TabsContent>
+
+          {/* DingTalk Docs Tab */}
+          <TabsContent value="dingtalk" className="flex-1 min-h-0 overflow-hidden m-0 flex flex-col">
+            <DingTalkDocContextSelector
+              selectedContexts={selectedDingTalkIds}
+              onSelect={handleDingTalkSelect}
+              onDeselect={handleDingTalkDeselect}
+              onSelectMultiple={handleDingTalkSelectMultiple}
+              onDeselectMultiple={handleDingTalkDeselectMultiple}
+            />
           </TabsContent>
         </Tabs>
       </PopoverContent>
