@@ -549,9 +549,17 @@ export default function ContextSelector({
             </TabsTrigger>
           </TabsList>
 
-          {/* Knowledge Base Tab */}
-          <TabsContent value="knowledge" className="flex-1 min-h-0 overflow-y-auto m-0 flex flex-col">
-            <Command className="border-0 flex flex-col flex-shrink-0">
+          {/* Knowledge Base Tab:
+              Layout strategy: Command (flex-1 min-h-0) fills the space that remains after
+              DingTalk section (flex-shrink-0) reserves its natural height.
+              TabsContent uses overflow-hidden — no external scroll needed because flex
+              distributes the height correctly so both sections always fit.
+              This is the cross-browser safe approach (Chrome, Edge, Safari, Firefox). */}
+          <TabsContent value="knowledge" className="flex-1 min-h-0 overflow-hidden m-0 flex flex-col">
+            {/* Command takes remaining space after DingTalk.
+                h-auto overrides Command's built-in h-full default which would otherwise
+                fill 100% of TabsContent, crowding out the DingTalk section below. */}
+            <Command className="border-0 flex flex-col flex-1 min-h-0 h-auto">
               <CommandInput
                 placeholder={t('knowledge:search_placeholder')}
                 value={searchValue}
@@ -561,7 +569,9 @@ export default function ContextSelector({
                   'placeholder:text-text-muted text-sm'
                 )}
               />
-              <CommandList className="min-h-[36px] overflow-visible">
+              {/* max-h-none overrides CommandList's built-in max-h-[300px] default so the
+                  list respects the flex-allocated height instead of a fixed cap. */}
+              <CommandList className="flex-1 min-h-[36px] overflow-y-auto max-h-none">
                 {loading || organizationNamespaceLoading ? (
                   <div className="py-4 px-3 text-center text-sm text-text-muted">
                     {t('common:actions.loading')}
@@ -795,8 +805,8 @@ export default function ContextSelector({
                   </button>
                 )}
               </div>
-              {/* DingTalk content */}
-              <div className="overflow-visible">
+              {/* DingTalk content — bounded height so tree scrolls independently */}
+              <div className="overflow-y-auto max-h-[120px]">
                 {dingtalkLoading ? (
                   <div className="py-3 px-4 text-center text-xs text-text-muted">
                     {t('common:actions.loading')}
