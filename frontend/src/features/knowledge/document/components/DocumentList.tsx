@@ -406,7 +406,7 @@ export function DocumentList({
     const { createWebDocument } = await import('@/apis/knowledge')
 
     // Call backend API to scrape and create document
-    const result = await createWebDocument(url, knowledgeBase.id, name)
+    const result = await createWebDocument(url, knowledgeBase.id, name, selectedUploadFolderId || 0)
 
     if (!result.success) {
       throw new Error(result.error_message || 'Failed to create web document')
