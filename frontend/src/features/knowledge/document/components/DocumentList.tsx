@@ -4,7 +4,7 @@
 
 'use client'
 
-import { useState, useMemo, useEffect, useRef, Suspense } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback, Suspense } from 'react'
 import {
   ArrowLeft,
   Upload,
