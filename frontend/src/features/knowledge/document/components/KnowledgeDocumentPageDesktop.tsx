@@ -547,6 +547,7 @@ export function KnowledgeDocumentPageDesktop({
       return (
         <DingtalkDocsPage
           isConfigured={sidebar.isDingtalkConfigured}
+          isWorkspaceConfigured={sidebar.isWorkspaceConfigured}
           onSyncComplete={() => sidebar.refreshAll()}
         />
       )
