@@ -30,6 +30,10 @@ def upgrade() -> None:
         "dingtalk_synced_nodes",
         sa.Column("source", sa.String(16), nullable=False, server_default="docs"),
     )
+    op.add_column(
+        "dingtalk_synced_nodes",
+        sa.Column("wikispace_type", sa.String(16), nullable=True),
+    )
     op.drop_index("ix_dingtalk_nodes_user_node", table_name="dingtalk_synced_nodes")
     op.create_index(
         "ix_dingtalk_nodes_user_node_source",
@@ -49,4 +53,5 @@ def downgrade() -> None:
         ["user_id", "dingtalk_node_id"],
         unique=True,
     )
+    op.drop_column("dingtalk_synced_nodes", "wikispace_type")
     op.drop_column("dingtalk_synced_nodes", "source")

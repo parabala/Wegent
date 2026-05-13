@@ -302,6 +302,7 @@ class DingTalkDocService:
         sync_time: datetime,
         db: Session,
         source: str = "docs",
+        wikispace_type: str | None = None,
     ) -> dict[str, Any]:
         """Sync fetched nodes to the database.
 
@@ -320,16 +321,18 @@ class DingTalkDocService:
                 continue
             dingtalk_node_ids.add(node_id)
 
-        # Mark nodes no longer in DingTalk as inactive (filter by source)
-        existing_active = (
+        # Mark nodes no longer in DingTalk as inactive (filter by source and wikispace_type)
+        query = (
             db.query(DingtalkSyncedNode)
             .filter(
                 DingtalkSyncedNode.user_id == user_id,
                 DingtalkSyncedNode.source == source,
                 DingtalkSyncedNode.is_active == True,  # noqa: E712
             )
-            .all()
         )
+        if wikispace_type:
+            query = query.filter(DingtalkSyncedNode.wikispace_type == wikispace_type)
+        existing_active = query.all()
 
         for existing in existing_active:
             if existing.dingtalk_node_id not in dingtalk_node_ids:
@@ -345,15 +348,17 @@ class DingTalkDocService:
         ]
         existing_nodes_map: dict[str, DingtalkSyncedNode] = {}
         if node_ids:
-            existing_rows = (
+            db_query = (
                 db.query(DingtalkSyncedNode)
                 .filter(
                     DingtalkSyncedNode.user_id == user_id,
                     DingtalkSyncedNode.source == source,
                     DingtalkSyncedNode.dingtalk_node_id.in_(node_ids),
                 )
-                .all()
             )
+            if wikispace_type:
+                db_query = db_query.filter(DingtalkSyncedNode.wikispace_type == wikispace_type)
+            existing_rows = db_query.all()
             existing_nodes_map = {row.dingtalk_node_id: row for row in existing_rows}
 
         # Upsert nodes from DingTalk
@@ -439,21 +444,24 @@ class DingTalkDocService:
                     is_active=True,
                     last_synced_at=sync_time,
                     source=source,
+                    wikispace_type=wikispace_type,
                 )
                 db.add(new_node)
                 added += 1
 
         db.commit()
 
-        total = (
+        total_query = (
             db.query(DingtalkSyncedNode)
             .filter(
                 DingtalkSyncedNode.user_id == user_id,
                 DingtalkSyncedNode.source == source,
                 DingtalkSyncedNode.is_active == True,  # noqa: E712
             )
-            .count()
         )
+        if wikispace_type:
+            total_query = total_query.filter(DingtalkSyncedNode.wikispace_type == wikispace_type)
+        total = total_query.count()
 
         return {
             "added": added,

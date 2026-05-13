@@ -43,23 +43,44 @@ export const dingtalkDocApi = {
   },
 
   /**
-   * Get all synced DingTalk wikispace nodes as a tree structure.
+   * Get all synced DingTalk personal wikispace (我的知识库) nodes as a tree structure.
    */
-  getWikispaceNodes: async (): Promise<DingtalkDocTreeResponse> => {
-    return client.get<DingtalkDocTreeResponse>('/dingtalk-wikispace')
+  getMyWikispaceNodes: async (): Promise<DingtalkDocTreeResponse> => {
+    return client.get<DingtalkDocTreeResponse>('/dingtalk-my-wikispace')
   },
 
   /**
-   * Trigger sync of DingTalk wikispace nodes from the user's wikispace MCP server.
+   * Trigger sync of DingTalk personal wikispace (我的知识库) nodes from the user's wikispace MCP server.
    */
-  syncWikispaceNodes: async (): Promise<DingtalkSyncResult> => {
-    return client.post<DingtalkSyncResult>('/dingtalk-wikispace/sync')
+  syncMyWikispaceNodes: async (): Promise<DingtalkSyncResult> => {
+    return client.post<DingtalkSyncResult>('/dingtalk-my-wikispace/sync')
   },
 
   /**
-   * Get the wikispace sync status for the current user.
+   * Get the personal wikispace (我的知识库) sync status for the current user.
    */
-  getWikispaceSyncStatus: async (): Promise<DingtalkSyncStatus> => {
-    return client.get<DingtalkSyncStatus>('/dingtalk-wikispace/sync-status')
+  getMyWikispaceSyncStatus: async (): Promise<DingtalkSyncStatus> => {
+    return client.get<DingtalkSyncStatus>('/dingtalk-my-wikispace/sync-status')
+  },
+
+  /**
+   * Get all synced DingTalk organization wikispace (组织知识库) nodes as a tree structure.
+   */
+  getOrgWikispaceNodes: async (): Promise<DingtalkDocTreeResponse> => {
+    return client.get<DingtalkDocTreeResponse>('/dingtalk-org-wikispace')
+  },
+
+  /**
+   * Trigger sync of DingTalk organization wikispace (组织知识库) nodes from the user's wikispace MCP server.
+   */
+  syncOrgWikispaceNodes: async (): Promise<DingtalkSyncResult> => {
+    return client.post<DingtalkSyncResult>('/dingtalk-org-wikispace/sync')
+  },
+
+  /**
+   * Get the organization wikispace (组织知识库) sync status for the current user.
+   */
+  getOrgWikispaceSyncStatus: async (): Promise<DingtalkSyncStatus> => {
+    return client.get<DingtalkSyncStatus>('/dingtalk-org-wikispace/sync-status')
   },
 }

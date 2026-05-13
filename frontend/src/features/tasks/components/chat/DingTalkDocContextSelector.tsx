@@ -7,7 +7,7 @@
  *
  * Renders the synced DingTalk document tree with checkboxes.
  * Selecting a folder automatically selects all its descendant nodes.
- * Supports two sections: "My Documents" and "Knowledge Base".
+ * Supports three sections: "My Documents", "My Knowledge Base", and "Org Knowledge Base".
  */
 
 'use client'
@@ -31,6 +31,8 @@ import { useTranslation } from '@/hooks/useTranslation'
 import { dingtalkDocApi } from '@/apis/dingtalk-doc'
 import type { DingtalkDocNode } from '@/types/dingtalk-doc'
 import type { DingTalkDocContext } from '@/types/context'
+
+type SectionType = 'my-docs' | 'my-wikispace' | 'org-wikispace'
 
 /** Collect all descendant node IDs (including self) from a node. */
 export function collectDescendants(node: DingtalkDocNode): string[] {
@@ -246,7 +248,7 @@ export function DingTalkDocContextSelector({
   const { t } = useTranslation('chat')
 
   // Section state
-  const [activeSection, setActiveSection] = useState<'my-docs' | 'wikispace'>('my-docs')
+  const [activeSection, setActiveSection] = useState<SectionType>('my-docs')
 
   // My Docs state
   const [nodes, setNodes] = useState<DingtalkDocNode[]>([])
@@ -256,13 +258,21 @@ export function DingTalkDocContextSelector({
   const [isConfigured, setIsConfigured] = useState(true)
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
 
-  // Wikispace state
-  const [wikispaceNodes, setWikispaceNodes] = useState<DingtalkDocNode[]>([])
-  const [wikispaceLoading, setWikispaceLoading] = useState(false)
-  const [wikispaceSyncing, setWikispaceSyncing] = useState(false)
-  const [wikispaceError, setWikispaceError] = useState<string | null>(null)
-  const [wikispaceConfigured, setWikispaceConfigured] = useState(false)
-  const [wikispaceLastSyncedAt, setWikispaceLastSyncedAt] = useState<string | null>(null)
+  // My Wikispace state
+  const [myWikispaceNodes, setMyWikispaceNodes] = useState<DingtalkDocNode[]>([])
+  const [myWikispaceLoading, setMyWikispaceLoading] = useState(false)
+  const [myWikispaceSyncing, setMyWikispaceSyncing] = useState(false)
+  const [myWikispaceError, setMyWikispaceError] = useState<string | null>(null)
+  const [myWikispaceConfigured, setMyWikispaceConfigured] = useState(false)
+  const [myWikispaceLastSyncedAt, setMyWikispaceLastSyncedAt] = useState<string | null>(null)
+
+  // Org Wikispace state
+  const [orgWikispaceNodes, setOrgWikispaceNodes] = useState<DingtalkDocNode[]>([])
+  const [orgWikispaceLoading, setOrgWikispaceLoading] = useState(false)
+  const [orgWikispaceSyncing, setOrgWikispaceSyncing] = useState(false)
+  const [orgWikispaceError, setOrgWikispaceError] = useState<string | null>(null)
+  const [orgWikispaceConfigured, setOrgWikispaceConfigured] = useState(false)
+  const [orgWikispaceLastSyncedAt, setOrgWikispaceLastSyncedAt] = useState<string | null>(null)
 
   // Shared search state
   const [searchQuery, setSearchQuery] = useState('')
@@ -286,29 +296,49 @@ export function DingTalkDocContextSelector({
     }
   }, [t])
 
-  const fetchWikispace = useCallback(async () => {
-    setWikispaceLoading(true)
-    setWikispaceError(null)
+  const fetchMyWikispace = useCallback(async () => {
+    setMyWikispaceLoading(true)
+    setMyWikispaceError(null)
     try {
       const [tree, status] = await Promise.all([
-        dingtalkDocApi.getWikispaceNodes(),
-        dingtalkDocApi.getWikispaceSyncStatus(),
+        dingtalkDocApi.getMyWikispaceNodes(),
+        dingtalkDocApi.getMyWikispaceSyncStatus(),
       ])
-      setWikispaceNodes(tree.nodes)
-      setWikispaceConfigured(status.is_configured)
-      setWikispaceLastSyncedAt(status.last_synced_at)
+      setMyWikispaceNodes(tree.nodes)
+      setMyWikispaceConfigured(status.is_configured)
+      setMyWikispaceLastSyncedAt(status.last_synced_at)
     } catch (err) {
-      console.error('Failed to fetch DingTalk wikispace:', err)
-      setWikispaceError(t('chat:dingtalkDocs.loadFailed'))
+      console.error('Failed to fetch DingTalk my wikispace:', err)
+      setMyWikispaceError(t('chat:dingtalkDocs.loadFailed'))
     } finally {
-      setWikispaceLoading(false)
+      setMyWikispaceLoading(false)
+    }
+  }, [t])
+
+  const fetchOrgWikispace = useCallback(async () => {
+    setOrgWikispaceLoading(true)
+    setOrgWikispaceError(null)
+    try {
+      const [tree, status] = await Promise.all([
+        dingtalkDocApi.getOrgWikispaceNodes(),
+        dingtalkDocApi.getOrgWikispaceSyncStatus(),
+      ])
+      setOrgWikispaceNodes(tree.nodes)
+      setOrgWikispaceConfigured(status.is_configured)
+      setOrgWikispaceLastSyncedAt(status.last_synced_at)
+    } catch (err) {
+      console.error('Failed to fetch DingTalk org wikispace:', err)
+      setOrgWikispaceError(t('chat:dingtalkDocs.loadFailed'))
+    } finally {
+      setOrgWikispaceLoading(false)
     }
   }, [t])
 
   useEffect(() => {
     fetchDocs()
-    fetchWikispace()
-  }, [fetchDocs, fetchWikispace])
+    fetchMyWikispace()
+    fetchOrgWikispace()
+  }, [fetchDocs, fetchMyWikispace, fetchOrgWikispace])
 
   const handleSync = useCallback(async () => {
     setSyncing(true)
@@ -324,19 +354,33 @@ export function DingTalkDocContextSelector({
     }
   }, [fetchDocs, t])
 
-  const handleWikispaceSync = useCallback(async () => {
-    setWikispaceSyncing(true)
-    setWikispaceError(null)
+  const handleMyWikispaceSync = useCallback(async () => {
+    setMyWikispaceSyncing(true)
+    setMyWikispaceError(null)
     try {
-      await dingtalkDocApi.syncWikispaceNodes()
-      await fetchWikispace()
+      await dingtalkDocApi.syncMyWikispaceNodes()
+      await fetchMyWikispace()
     } catch (err) {
-      console.error('Failed to sync DingTalk wikispace:', err)
-      setWikispaceError(t('chat:dingtalkDocs.syncFailed'))
+      console.error('Failed to sync DingTalk my wikispace:', err)
+      setMyWikispaceError(t('chat:dingtalkDocs.syncFailed'))
     } finally {
-      setWikispaceSyncing(false)
+      setMyWikispaceSyncing(false)
     }
-  }, [fetchWikispace, t])
+  }, [fetchMyWikispace, t])
+
+  const handleOrgWikispaceSync = useCallback(async () => {
+    setOrgWikispaceSyncing(true)
+    setOrgWikispaceError(null)
+    try {
+      await dingtalkDocApi.syncOrgWikispaceNodes()
+      await fetchOrgWikispace()
+    } catch (err) {
+      console.error('Failed to sync DingTalk org wikispace:', err)
+      setOrgWikispaceError(t('chat:dingtalkDocs.syncFailed'))
+    } finally {
+      setOrgWikispaceSyncing(false)
+    }
+  }, [fetchOrgWikispace, t])
 
   /** Build a DingTalkDocContext from a node. */
   const buildContext = useCallback((node: DingtalkDocNode): DingTalkDocContext => {
@@ -389,7 +433,7 @@ export function DingTalkDocContextSelector({
     [selectedContexts, buildContext, onSelect, onDeselect, onSelectMultiple]
   )
 
-  // Count of selected doc/file nodes across both sections
+  // Count of selected doc/file nodes across all sections
   const selectedDocCount = useMemo(() => {
     const countDocs = (nodeList: DingtalkDocNode[]): number => {
       let count = 0
@@ -403,17 +447,52 @@ export function DingTalkDocContextSelector({
       }
       return count
     }
-    return countDocs(nodes) + countDocs(wikispaceNodes)
-  }, [nodes, wikispaceNodes, selectedContexts])
+    return countDocs(nodes) + countDocs(myWikispaceNodes) + countDocs(orgWikispaceNodes)
+  }, [nodes, myWikispaceNodes, orgWikispaceNodes, selectedContexts])
 
   // Derived active section values
-  const activeNodes = activeSection === 'my-docs' ? nodes : wikispaceNodes
-  const activeLoading = activeSection === 'my-docs' ? loading : wikispaceLoading
-  const activeSyncing = activeSection === 'my-docs' ? syncing : wikispaceSyncing
-  const activeError = activeSection === 'my-docs' ? error : wikispaceError
-  const activeLastSyncedAt = activeSection === 'my-docs' ? lastSyncedAt : wikispaceLastSyncedAt
-  const handleActiveSync = activeSection === 'my-docs' ? handleSync : handleWikispaceSync
-  const handleRetry = activeSection === 'my-docs' ? fetchDocs : fetchWikispace
+  const activeNodes =
+    activeSection === 'my-docs'
+      ? nodes
+      : activeSection === 'my-wikispace'
+        ? myWikispaceNodes
+        : orgWikispaceNodes
+  const activeLoading =
+    activeSection === 'my-docs'
+      ? loading
+      : activeSection === 'my-wikispace'
+        ? myWikispaceLoading
+        : orgWikispaceLoading
+  const activeSyncing =
+    activeSection === 'my-docs'
+      ? syncing
+      : activeSection === 'my-wikispace'
+        ? myWikispaceSyncing
+        : orgWikispaceSyncing
+  const activeError =
+    activeSection === 'my-docs'
+      ? error
+      : activeSection === 'my-wikispace'
+        ? myWikispaceError
+        : orgWikispaceError
+  const activeLastSyncedAt =
+    activeSection === 'my-docs'
+      ? lastSyncedAt
+      : activeSection === 'my-wikispace'
+        ? myWikispaceLastSyncedAt
+        : orgWikispaceLastSyncedAt
+  const handleActiveSync =
+    activeSection === 'my-docs'
+      ? handleSync
+      : activeSection === 'my-wikispace'
+        ? handleMyWikispaceSync
+        : handleOrgWikispaceSync
+  const handleRetry =
+    activeSection === 'my-docs'
+      ? fetchDocs
+      : activeSection === 'my-wikispace'
+        ? fetchMyWikispace
+        : fetchOrgWikispace
 
   /** Render the content area for the active section. */
   const renderContent = () => {
@@ -451,17 +530,20 @@ export function DingTalkDocContextSelector({
       )
     }
 
-    if (activeSection === 'wikispace' && !wikispaceConfigured) {
+    if (
+      (activeSection === 'my-wikispace' && !myWikispaceConfigured) ||
+      (activeSection === 'org-wikispace' && !orgWikispaceConfigured)
+    ) {
       return (
         <div className="py-6 px-4 text-center space-y-3">
           <p className="text-sm text-text-muted">{t('chat:dingtalkDocs.wikispaceNotConfigured')}</p>
-          <a
-            href="/settings?section=integrations&tab=integrations"
+          <Link
+            href="/settings/integrations"
             className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium transition-colors"
           >
             {t('chat:dingtalkDocs.goToConfigure')}
             <ExternalLink className="w-3.5 h-3.5" />
-          </a>
+          </Link>
         </div>
       )
     }
@@ -514,16 +596,29 @@ export function DingTalkDocContextSelector({
         </button>
         <button
           type="button"
-          onClick={() => setActiveSection('wikispace')}
+          onClick={() => setActiveSection('my-wikispace')}
           className={cn(
             'flex-1 py-1.5 text-xs font-medium transition-colors',
-            activeSection === 'wikispace'
+            activeSection === 'my-wikispace'
               ? 'text-text-primary border-b-2 border-primary'
               : 'text-text-muted hover:text-text-primary'
           )}
-          data-testid="dingtalk-section-wikispace"
+          data-testid="dingtalk-section-my-wikispace"
         >
-          {t('chat:dingtalkDocs.wikispaceTab')}
+          {t('chat:dingtalkDocs.myWikispaceTab')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSection('org-wikispace')}
+          className={cn(
+            'flex-1 py-1.5 text-xs font-medium transition-colors',
+            activeSection === 'org-wikispace'
+              ? 'text-text-primary border-b-2 border-primary'
+              : 'text-text-muted hover:text-text-primary'
+          )}
+          data-testid="dingtalk-section-org-wikispace"
+        >
+          {t('chat:dingtalkDocs.orgWikispaceTab')}
         </button>
       </div>
 

@@ -687,6 +687,8 @@
     "searchPlaceholder": "Search documents...",
     "referencedDocsLabel": "Referenced DingTalk Documents:",
     "myDocsTab": "My Documents",
+    "myWikispaceTab": "My Knowledge Base",
+    "orgWikispaceTab": "Org Knowledge Base",
     "wikispaceTab": "Knowledge Base",
     "wikispaceSync": "Sync",
     "wikispaceSyncing": "Syncing...",

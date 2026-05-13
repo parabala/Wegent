@@ -23,6 +23,7 @@ class DingtalkDocNodeBase(BaseModel):
     workspace_id: str = ""
     content_type: str = ""
     content_updated_at: datetime
+    wikispace_type: Optional[str] = None  # myWikiSpace, orgWikiSpace
 
 
 class DingtalkDocNode(DingtalkDocNodeBase):
