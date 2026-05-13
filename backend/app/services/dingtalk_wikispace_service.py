@@ -48,6 +48,11 @@ MCP_TOOL_LIST_WIKI_SPACES = "list_wikiSpaces"
 
 # wiki space type value for org-level KBs (as opposed to "myWikiSpace")
 WIKI_SPACE_TYPE_ORG = "orgWikiSpace"
+# wiki space type value for personal KBs
+WIKI_SPACE_TYPE_MY = "myWikiSpace"
+
+# Both wiki space types to sync
+ALL_WIKI_SPACE_TYPES = [WIKI_SPACE_TYPE_MY, WIKI_SPACE_TYPE_ORG]
 
 
 class DingTalkWikiSpaceService:
@@ -118,7 +123,10 @@ class DingTalkWikiSpaceService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    async def _list_wiki_spaces(wikispace_mcp_url: str) -> list[dict[str, Any]]:
+    async def _list_wiki_spaces(
+        wikispace_mcp_url: str,
+        wiki_space_type: str = WIKI_SPACE_TYPE_ORG,
+    ) -> list[dict[str, Any]]:
         """Call list_wikiSpaces on the wikispace MCP and return all KB entries.
 
         Paginates automatically. Logs available tools and raw responses to aid
@@ -166,12 +174,12 @@ class DingTalkWikiSpaceService:
                         exc,
                     )
 
-                # Paginate through all org-level knowledge bases.
+                # Paginate through knowledge bases of the given type.
                 page_token: str | None = None
                 first_call = True
                 while True:
                     args: dict[str, Any] = {
-                        "wikiSpaceType": WIKI_SPACE_TYPE_ORG,
+                        "wikiSpaceType": wiki_space_type,
                         "pageSize": 50,
                     }
                     if page_token:
@@ -185,8 +193,9 @@ class DingTalkWikiSpaceService:
                         try:
                             raw_repr = repr(result)
                             logger.info(
-                                "list_wikiSpaces raw response "
+                                "list_wikiSpaces(wikiSpaceType=%s) raw response "
                                 "(first 2000 chars): %.2000s",
+                                wiki_space_type,
                                 raw_repr,
                             )
                         except Exception:
@@ -195,12 +204,16 @@ class DingTalkWikiSpaceService:
                     batch, page_token = DingTalkDocService._parse_list_nodes_result(
                         result
                     )
+                    # Tag each KB node with its wiki_space_type
+                    for node in batch:
+                        node["wikiSpaceType"] = wiki_space_type
                     kb_nodes.extend(batch)
                     if not page_token:
                         break
 
         logger.info(
-            "list_wikiSpaces returned %d knowledge bases",
+            "list_wikiSpaces(wikiSpaceType=%s) returned %d knowledge bases",
+            wiki_space_type,
             len(kb_nodes),
         )
         return kb_nodes
@@ -212,8 +225,9 @@ class DingTalkWikiSpaceService:
     @staticmethod
     async def _list_nodes_in_wikispace(
         docs_mcp_url: str,
-        workspaceId: str,
+        workspace_id: str,
         all_nodes: list[dict[str, Any]],
+        wiki_space_type: str = "",
     ) -> None:
         """Open a docs MCP session and recursively list all nodes in the given KB.
 
@@ -254,6 +268,9 @@ class DingTalkWikiSpaceService:
                 first_batch, first_token = DingTalkDocService._parse_list_nodes_result(
                     first_result
                 )
+                # Tag nodes with wiki_space_type
+                for node in first_batch:
+                    node["wikiSpaceType"] = wiki_space_type
                 all_nodes.extend(first_batch)
 
                 # Recurse into sub-folders found in the first batch.
@@ -267,6 +284,7 @@ class DingTalkWikiSpaceService:
                             workspace_id=ws_id,
                             all_nodes=all_nodes,
                             depth=1,
+                            extra_tags={"wikiSpaceType": wiki_space_type},
                         )
 
                 # Continue paging the root level if there are more pages.
@@ -281,6 +299,8 @@ class DingTalkWikiSpaceService:
                     batch, page_token = DingTalkDocService._parse_list_nodes_result(
                         result
                     )
+                    for node in batch:
+                        node["wikiSpaceType"] = wiki_space_type
                     all_nodes.extend(batch)
                     for node in batch:
                         if node.get("nodeType") == "folder":
@@ -292,6 +312,7 @@ class DingTalkWikiSpaceService:
                                 workspace_id=ws_id,
                                 all_nodes=all_nodes,
                                 depth=1,
+                                extra_tags={"wikiSpaceType": wiki_space_type},
                             )
 
     @staticmethod
@@ -303,7 +324,8 @@ class DingTalkWikiSpaceService:
 
         Phase 1 - wikispace MCP (list_wikiSpaces):
             Connects to the 知识库 MCP server and calls list_wikiSpaces to get
-            the list of knowledge bases the user can access.
+            the list of knowledge bases the user can access. Called once for
+            myWikiSpace (personal KBs) and once for orgWikiSpace (org KBs).
 
         Phase 2 - docs MCP (list_nodes with workspaceId):
             For each KB found in Phase 1, connects to the docs MCP server and
@@ -313,16 +335,6 @@ class DingTalkWikiSpaceService:
         """
         all_nodes: list[dict[str, Any]] = []
 
-        # Phase 1: obtain knowledge-base list.
-        kb_nodes = await DingTalkWikiSpaceService._list_wiki_spaces(wikispace_mcp_url)
-
-        if not kb_nodes:
-            logger.warning(
-                "list_wikiSpaces returned 0 knowledge bases. "
-                "Verify the wikispace MCP URL and user permissions."
-            )
-            return all_nodes
-
         # The URL used for list_nodes (Phase 2).
         nodes_url = docs_mcp_url or wikispace_mcp_url
         if not docs_mcp_url:
@@ -331,61 +343,87 @@ class DingTalkWikiSpaceService:
                 "Configure the DingTalk Docs MCP for best results."
             )
 
-        # Phase 2: list documents for every knowledge base.
-        for kb_node in kb_nodes:
-            # The wikispace MCP returns workspaceId as the KB identifier.
-            kb_id = (
-                kb_node.get("workspaceId") or kb_node.get("nodeId") or kb_node.get("id")
-            )
-            if not kb_id:
-                logger.warning(
-                    "Skipping KB node with no workspaceId/nodeId: %s",
-                    kb_node,
-                )
-                continue
-
-            kb_name = kb_node.get("name") or kb_node.get("title") or kb_id
-            kb_url = kb_node.get("url") or (
-                f"https://alidocs.dingtalk.com/i/spaces/{kb_id}/overview"
-            )
-
-            # Represent the KB root as a folder-like node so the UI can render
-            # it as the top of the document tree.
-            kb_as_folder: dict[str, Any] = {
-                **kb_node,
-                "nodeId": kb_id,
-                "nodeType": "folder",
-                "workspaceId": kb_id,
-                "name": kb_name,
-                "url": kb_url,
-            }
-            all_nodes.append(kb_as_folder)
-
-            logger.info(
-                "Fetching documents for knowledge base '%s' (workspace_id=%s)",
-                kb_name,
-                kb_id,
-            )
-
+        # Phase 1: obtain knowledge-base list for both types.
+        for space_type in ALL_WIKI_SPACE_TYPES:
             try:
-                await DingTalkWikiSpaceService._list_nodes_in_wikispace(
-                    docs_mcp_url=nodes_url,
-                    workspace_id=kb_id,
-                    all_nodes=all_nodes,
+                kb_nodes = await DingTalkWikiSpaceService._list_wiki_spaces(
+                    wikispace_mcp_url, wiki_space_type=space_type
                 )
             except Exception as exc:
                 logger.error(
-                    "Failed to list nodes in KB '%s' (id=%s): %s",
-                    kb_name,
-                    kb_id,
+                    "Failed to list wikiSpaces for type '%s': %s",
+                    space_type,
                     exc,
                 )
-                # Continue with remaining KBs even if one fails.
+                continue
+
+            if not kb_nodes:
+                logger.info(
+                    "list_wikiSpaces(wikiSpaceType=%s) returned 0 knowledge bases.",
+                    space_type,
+                )
+                continue
+
+            # Phase 2: list documents for every knowledge base.
+            for kb_node in kb_nodes:
+                # The wikispace MCP returns workspaceId as the KB identifier.
+                kb_id = (
+                    kb_node.get("workspaceId")
+                    or kb_node.get("nodeId")
+                    or kb_node.get("id")
+                )
+                if not kb_id:
+                    logger.warning(
+                        "Skipping KB node with no workspaceId/nodeId: %s",
+                        kb_node,
+                    )
+                    continue
+
+                kb_name = kb_node.get("name") or kb_node.get("title") or kb_id
+                kb_url = kb_node.get("url") or (
+                    f"https://alidocs.dingtalk.com/i/spaces/{kb_id}/overview"
+                )
+                kb_wiki_space_type = kb_node.get("wikiSpaceType", space_type)
+
+                # Represent the KB root as a folder-like node so the UI can render
+                # it as the top of the document tree.
+                kb_as_folder: dict[str, Any] = {
+                    **kb_node,
+                    "nodeId": kb_id,
+                    "nodeType": "folder",
+                    "workspaceId": kb_id,
+                    "name": kb_name,
+                    "url": kb_url,
+                    "wikiSpaceType": kb_wiki_space_type,
+                }
+                all_nodes.append(kb_as_folder)
+
+                logger.info(
+                    "Fetching documents for knowledge base '%s' (workspace_id=%s, type=%s)",
+                    kb_name,
+                    kb_id,
+                    kb_wiki_space_type,
+                )
+
+                try:
+                    await DingTalkWikiSpaceService._list_nodes_in_wikispace(
+                        docs_mcp_url=nodes_url,
+                        workspace_id=kb_id,
+                        all_nodes=all_nodes,
+                        wiki_space_type=kb_wiki_space_type,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Failed to list nodes in KB '%s' (id=%s): %s",
+                        kb_name,
+                        kb_id,
+                        exc,
+                    )
+                    # Continue with remaining KBs even if one fails.
 
         logger.info(
-            "WikiSpace sync fetched %d total nodes across %d knowledge bases",
+            "WikiSpace sync fetched %d total nodes",
             len(all_nodes),
-            len(kb_nodes),
         )
         return all_nodes
 
@@ -394,44 +432,67 @@ class DingTalkWikiSpaceService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def get_wikispace_nodes(user_id: int, db: Session) -> list[DingtalkSyncedNode]:
-        """Get all active DingTalk wikispace nodes for a user."""
-        return (
+    def get_wikispace_nodes(
+        user_id: int,
+        db: Session,
+        wiki_space_type: str | None = None,
+    ) -> list[DingtalkSyncedNode]:
+        """Get all active DingTalk wikispace nodes for a user.
+
+        Optionally filter by wiki_space_type ('myWikiSpace' or 'orgWikiSpace').
+        """
+        query = (
             db.query(DingtalkSyncedNode)
             .filter(
                 DingtalkSyncedNode.user_id == user_id,
                 DingtalkSyncedNode.source == WIKISPACE_SOURCE,
                 DingtalkSyncedNode.is_active == True,  # noqa: E712
             )
-            .order_by(DingtalkSyncedNode.node_type, DingtalkSyncedNode.name)
-            .all()
         )
+        if wiki_space_type:
+            query = query.filter(
+                DingtalkSyncedNode.wiki_space_type == wiki_space_type
+            )
+        return query.order_by(
+            DingtalkSyncedNode.node_type, DingtalkSyncedNode.name
+        ).all()
 
     @staticmethod
-    def get_sync_status(user: User, db: Session) -> dict[str, Any]:
-        """Get sync status for a user's DingTalk wikispace nodes."""
+    def get_sync_status(
+        user: User,
+        db: Session,
+        wiki_space_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Get sync status for a user's DingTalk wikispace nodes.
+
+        Optionally filter by wiki_space_type.
+        """
         is_configured = DingTalkWikiSpaceService.is_configured(user, db)
 
-        last_synced = (
-            db.query(DingtalkSyncedNode.last_synced_at)
-            .filter(
-                DingtalkSyncedNode.user_id == user.id,
-                DingtalkSyncedNode.source == WIKISPACE_SOURCE,
-                DingtalkSyncedNode.is_active == True,  # noqa: E712
-            )
-            .order_by(DingtalkSyncedNode.last_synced_at.desc())
-            .first()
+        query = db.query(DingtalkSyncedNode.last_synced_at).filter(
+            DingtalkSyncedNode.user_id == user.id,
+            DingtalkSyncedNode.source == WIKISPACE_SOURCE,
+            DingtalkSyncedNode.is_active == True,  # noqa: E712
         )
+        if wiki_space_type:
+            query = query.filter(
+                DingtalkSyncedNode.wiki_space_type == wiki_space_type
+            )
 
-        total = (
-            db.query(DingtalkSyncedNode)
-            .filter(
-                DingtalkSyncedNode.user_id == user.id,
-                DingtalkSyncedNode.source == WIKISPACE_SOURCE,
-                DingtalkSyncedNode.is_active == True,  # noqa: E712
-            )
-            .count()
+        last_synced = query.order_by(
+            DingtalkSyncedNode.last_synced_at.desc()
+        ).first()
+
+        count_query = db.query(DingtalkSyncedNode).filter(
+            DingtalkSyncedNode.user_id == user.id,
+            DingtalkSyncedNode.source == WIKISPACE_SOURCE,
+            DingtalkSyncedNode.is_active == True,  # noqa: E712
         )
+        if wiki_space_type:
+            count_query = count_query.filter(
+                DingtalkSyncedNode.wiki_space_type == wiki_space_type
+            )
+        total = count_query.count()
 
         return {
             "last_synced_at": last_synced[0] if last_synced else None,

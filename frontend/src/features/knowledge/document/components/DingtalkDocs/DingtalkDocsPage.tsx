@@ -5,13 +5,14 @@
 /**
  * DingtalkDocsPage - Main page component for DingTalk document browsing.
  *
- * Layout: header with sync button + tabs for "My Documents" and "Knowledge Base".
+ * Layout: header with sync button + tabs for "My Documents", "My Knowledge Base",
+ * and "Organization Knowledge Base".
  */
 
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, FolderOpen, BookOpen, ExternalLink } from 'lucide-react'
+import { RefreshCw, FolderOpen, BookOpen, Building2, ExternalLink } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from '@/hooks/useTranslation'
 import { formatDateTime } from '@/utils/dateTime'
@@ -23,6 +24,8 @@ import { DingtalkDocTreeView } from './DingtalkDocTreeView'
 import { DingtalkNotConfigured } from './dingtalk-not-configured'
 import type { DingtalkDocNode, DingtalkSyncStatus } from '@/types/dingtalk-doc'
 
+type TabKey = 'my-docs' | 'my-wikispace' | 'org-wikispace'
+
 interface DingtalkDocsPageProps {
   /** Whether DingTalk Docs MCP is configured for the user */
   isConfigured: boolean
@@ -32,127 +35,189 @@ interface DingtalkDocsPageProps {
   onSyncComplete?: () => void
 }
 
+interface TabState {
+  tree: DingtalkDocNode[]
+  totalCount: number
+  syncStatus: DingtalkSyncStatus | null
+  isLoading: boolean
+  isSyncing: boolean
+}
+
+function createEmptyTabState(): TabState {
+  return {
+    tree: [],
+    totalCount: 0,
+    syncStatus: null,
+    isLoading: false,
+    isSyncing: false,
+  }
+}
+
 export function DingtalkDocsPage({
   isConfigured,
   isWikispaceConfigured = false,
   onSyncComplete,
 }: DingtalkDocsPageProps) {
   const { t } = useTranslation('knowledge')
-  const [activeTab, setActiveTab] = useState<'my-docs' | 'wikispace'>('my-docs')
+  const [activeTab, setActiveTab] = useState<TabKey>('my-docs')
 
-  // My Docs state
-  const [docTree, setDocTree] = useState<DingtalkDocNode[]>([])
-  const [docTotalCount, setDocTotalCount] = useState(0)
-  const [docSyncStatus, setDocSyncStatus] = useState<DingtalkSyncStatus | null>(null)
-  const [isLoadingDocs, setIsLoadingDocs] = useState(false)
-  const [isSyncingDocs, setIsSyncingDocs] = useState(false)
+  // Per-tab state
+  const [myDocs, setMyDocs] = useState<TabState>(createEmptyTabState)
+  const [myWikispace, setMyWikispace] = useState<TabState>(createEmptyTabState)
+  const [orgWikispace, setOrgWikispace] = useState<TabState>(createEmptyTabState)
 
-  // Wikispace state
-  const [wikispaceTree, setWikispaceTree] = useState<DingtalkDocNode[]>([])
-  const [wikispaceTotalCount, setWikispaceTotalCount] = useState(0)
-  const [wikispaceSyncStatus, setWikispaceSyncStatus] = useState<DingtalkSyncStatus | null>(null)
-  const [isLoadingWikispace, setIsLoadingWikispace] = useState(false)
-  const [isSyncingWikispace, setIsSyncingWikispace] = useState(false)
+  const getTabState = useCallback(
+    (tab: TabKey): TabState => {
+      switch (tab) {
+        case 'my-docs':
+          return myDocs
+        case 'my-wikispace':
+          return myWikispace
+        case 'org-wikispace':
+          return orgWikispace
+      }
+    },
+    [myDocs, myWikispace, orgWikispace]
+  )
 
-  // Load docs sync status on mount
+  const setTabState = useCallback(
+    (tab: TabKey, updater: (prev: TabState) => TabState) => {
+      switch (tab) {
+        case 'my-docs':
+          setMyDocs(updater)
+          break
+        case 'my-wikispace':
+          setMyWikispace(updater)
+          break
+        case 'org-wikispace':
+          setOrgWikispace(updater)
+          break
+      }
+    },
+    []
+  )
+
+  // Load my-docs sync status on mount
   useEffect(() => {
     dingtalkDocApi
       .getSyncStatus()
-      .then(setDocSyncStatus)
+      .then(status =>
+        setMyDocs(prev => ({ ...prev, syncStatus: status }))
+      )
       .catch(() => {})
   }, [])
 
-  // Load wikispace sync status on mount
+  // Load wikispace sync statuses on mount
   useEffect(() => {
     if (isWikispaceConfigured) {
       dingtalkDocApi
-        .getWikispaceSyncStatus()
-        .then(setWikispaceSyncStatus)
+        .getWikispaceSyncStatus('myWikiSpace')
+        .then(status =>
+          setMyWikispace(prev => ({ ...prev, syncStatus: status }))
+        )
+        .catch(() => {})
+      dingtalkDocApi
+        .getWikispaceSyncStatus('orgWikiSpace')
+        .then(status =>
+          setOrgWikispace(prev => ({ ...prev, syncStatus: status }))
+        )
         .catch(() => {})
     }
   }, [isWikispaceConfigured])
 
-  // Load docs when status shows synced content
+  // Load my-docs when status shows synced content
   useEffect(() => {
-    if (docSyncStatus && docSyncStatus.total_nodes > 0) {
-      loadDocs()
+    if (myDocs.syncStatus && myDocs.syncStatus.total_nodes > 0) {
+      loadTab('my-docs')
     }
-  }, [docSyncStatus?.total_nodes]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [myDocs.syncStatus?.total_nodes]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load wikispace when status shows synced content
+  // Load my-wikispace when status shows synced content
   useEffect(() => {
-    if (wikispaceSyncStatus && wikispaceSyncStatus.total_nodes > 0) {
-      loadWikispace()
+    if (myWikispace.syncStatus && myWikispace.syncStatus.total_nodes > 0) {
+      loadTab('my-wikispace')
     }
-  }, [wikispaceSyncStatus?.total_nodes]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [myWikispace.syncStatus?.total_nodes]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadDocs = useCallback(async () => {
-    setIsLoadingDocs(true)
-    try {
-      const response = await dingtalkDocApi.getDocs()
-      setDocTree(response.nodes)
-      setDocTotalCount(response.total_count)
-    } catch (error) {
-      console.error('Failed to load DingTalk docs:', error)
-    } finally {
-      setIsLoadingDocs(false)
+  // Load org-wikispace when status shows synced content
+  useEffect(() => {
+    if (orgWikispace.syncStatus && orgWikispace.syncStatus.total_nodes > 0) {
+      loadTab('org-wikispace')
     }
-  }, [])
+  }, [orgWikispace.syncStatus?.total_nodes]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadWikispace = useCallback(async () => {
-    setIsLoadingWikispace(true)
-    try {
-      const response = await dingtalkDocApi.getWikispaceNodes()
-      setWikispaceTree(response.nodes)
-      setWikispaceTotalCount(response.total_count)
-    } catch (error) {
-      console.error('Failed to load DingTalk wikispace:', error)
-    } finally {
-      setIsLoadingWikispace(false)
-    }
-  }, [])
+  const loadTab = useCallback(
+    async (tab: TabKey) => {
+      setTabState(tab, prev => ({ ...prev, isLoading: true }))
+      try {
+        let response: { nodes: DingtalkDocNode[]; total_count: number }
+        if (tab === 'my-docs') {
+          response = await dingtalkDocApi.getDocs()
+        } else if (tab === 'my-wikispace') {
+          response = await dingtalkDocApi.getWikispaceNodes('myWikiSpace')
+        } else {
+          response = await dingtalkDocApi.getWikispaceNodes('orgWikiSpace')
+        }
+        setTabState(tab, prev => ({
+          ...prev,
+          tree: response.nodes,
+          totalCount: response.total_count,
+          isLoading: false,
+        }))
+      } catch (error) {
+        console.error(`Failed to load DingTalk ${tab}:`, error)
+        setTabState(tab, prev => ({ ...prev, isLoading: false }))
+      }
+    },
+    [setTabState]
+  )
 
-  const handleSyncDocs = useCallback(async () => {
-    setIsSyncingDocs(true)
-    try {
-      await dingtalkDocApi.syncDocs()
-      const [docsResponse, status] = await Promise.all([
-        dingtalkDocApi.getDocs(),
-        dingtalkDocApi.getSyncStatus(),
-      ])
-      setDocTree(docsResponse.nodes)
-      setDocTotalCount(docsResponse.total_count)
-      setDocSyncStatus(status)
-      onSyncComplete?.()
-    } catch (error) {
-      console.error('Failed to sync DingTalk docs:', error)
-    } finally {
-      setIsSyncingDocs(false)
-    }
-  }, [onSyncComplete])
+  const handleSync = useCallback(
+    async (tab: TabKey) => {
+      setTabState(tab, prev => ({ ...prev, isSyncing: true }))
+      try {
+        if (tab === 'my-docs') {
+          await dingtalkDocApi.syncDocs()
+          const [docsResponse, status] = await Promise.all([
+            dingtalkDocApi.getDocs(),
+            dingtalkDocApi.getSyncStatus(),
+          ])
+          setMyDocs(prev => ({
+            ...prev,
+            tree: docsResponse.nodes,
+            totalCount: docsResponse.total_count,
+            syncStatus: status,
+            isSyncing: false,
+          }))
+        } else {
+          // Sync wikispace (syncs both types at once)
+          await dingtalkDocApi.syncWikispaceNodes()
+          const wikiSpaceType =
+            tab === 'my-wikispace' ? 'myWikiSpace' : 'orgWikiSpace'
+          const updater =
+            tab === 'my-wikispace' ? setMyWikispace : setOrgWikispace
+          const [wsResponse, status] = await Promise.all([
+            dingtalkDocApi.getWikispaceNodes(wikiSpaceType),
+            dingtalkDocApi.getWikispaceSyncStatus(wikiSpaceType),
+          ])
+          updater(prev => ({
+            ...prev,
+            tree: wsResponse.nodes,
+            totalCount: wsResponse.total_count,
+            syncStatus: status,
+            isSyncing: false,
+          }))
+        }
+        onSyncComplete?.()
+      } catch (error) {
+        console.error(`Failed to sync DingTalk ${tab}:`, error)
+        setTabState(tab, prev => ({ ...prev, isSyncing: false }))
+      }
+    },
+    [setTabState, onSyncComplete]
+  )
 
-  const handleSyncWikispace = useCallback(async () => {
-    setIsSyncingWikispace(true)
-    try {
-      await dingtalkDocApi.syncWikispaceNodes()
-      const [wsResponse, status] = await Promise.all([
-        dingtalkDocApi.getWikispaceNodes(),
-        dingtalkDocApi.getWikispaceSyncStatus(),
-      ])
-      setWikispaceTree(wsResponse.nodes)
-      setWikispaceTotalCount(wsResponse.total_count)
-      setWikispaceSyncStatus(status)
-      onSyncComplete?.()
-    } catch (error) {
-      console.error('Failed to sync DingTalk wikispace:', error)
-    } finally {
-      setIsSyncingWikispace(false)
-    }
-  }, [onSyncComplete])
-
-  const isSyncing = activeTab === 'my-docs' ? isSyncingDocs : isSyncingWikispace
-  const handleSync = activeTab === 'my-docs' ? handleSyncDocs : handleSyncWikispace
-  const activeSyncStatus = activeTab === 'my-docs' ? docSyncStatus : wikispaceSyncStatus
+  const tabState = getTabState(activeTab)
 
   if (!isConfigured && !isWikispaceConfigured) {
     return <DingtalkNotConfigured />
@@ -169,23 +234,26 @@ export function DingtalkDocsPage({
           </h2>
         </div>
         <div className="flex items-center gap-2">
-          {activeSyncStatus?.last_synced_at && (
+          {tabState.syncStatus?.last_synced_at && (
             <span className="text-xs text-text-muted">
               {t('document.dingtalk.lastSynced', '上次同步')}:{' '}
-              {formatDateTime(new Date(activeSyncStatus.last_synced_at).getTime())}
+              {formatDateTime(
+                new Date(tabState.syncStatus.last_synced_at).getTime()
+              )}
             </span>
           )}
           <Button
             variant="outline"
             size="sm"
-            onClick={handleSync}
+            onClick={() => handleSync(activeTab)}
             disabled={
-              isSyncing || (activeTab === 'my-docs' ? !isConfigured : !isWikispaceConfigured)
+              tabState.isSyncing ||
+              (activeTab === 'my-docs' ? !isConfigured : !isWikispaceConfigured)
             }
             className="h-11 min-w-[44px]"
             data-testid="dingtalk-sync-button"
           >
-            {isSyncing ? (
+            {tabState.isSyncing ? (
               <>
                 <Spinner size="sm" className="mr-1" />
                 {t('document.dingtalk.syncing', '同步中...')}
@@ -203,66 +271,125 @@ export function DingtalkDocsPage({
       {/* Tabs */}
       <Tabs
         value={activeTab}
-        onValueChange={v => setActiveTab(v as 'my-docs' | 'wikispace')}
+        onValueChange={v => setActiveTab(v as TabKey)}
         className="flex flex-col flex-1 min-h-0"
       >
         <TabsList className="mx-6 mt-3 self-start rounded-md">
           <TabsTrigger value="my-docs" data-testid="dingtalk-tab-my-docs">
             <FolderOpen className="w-3.5 h-3.5 mr-1.5" />
             {t('document.dingtalk.myDocs', '我的文档')}
-            {docTotalCount > 0 && (
-              <span className="ml-1.5 text-xs text-text-muted">({docTotalCount})</span>
+            {myDocs.totalCount > 0 && (
+              <span className="ml-1.5 text-xs text-text-muted">
+                ({myDocs.totalCount})
+              </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="wikispace" data-testid="dingtalk-tab-wikispace">
+          <TabsTrigger
+            value="my-wikispace"
+            data-testid="dingtalk-tab-my-wikispace"
+          >
             <BookOpen className="w-3.5 h-3.5 mr-1.5" />
-            {t('document.dingtalk.wikispace', '知识库')}
-            {wikispaceTotalCount > 0 && (
-              <span className="ml-1.5 text-xs text-text-muted">({wikispaceTotalCount})</span>
+            {t('document.dingtalk.myWikispace', '我的知识库')}
+            {myWikispace.totalCount > 0 && (
+              <span className="ml-1.5 text-xs text-text-muted">
+                ({myWikispace.totalCount})
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger
+            value="org-wikispace"
+            data-testid="dingtalk-tab-org-wikispace"
+          >
+            <Building2 className="w-3.5 h-3.5 mr-1.5" />
+            {t('document.dingtalk.orgWikispace', '组织知识库')}
+            {orgWikispace.totalCount > 0 && (
+              <span className="ml-1.5 text-xs text-text-muted">
+                ({orgWikispace.totalCount})
+              </span>
             )}
           </TabsTrigger>
         </TabsList>
 
         {/* My Docs tab */}
-        <TabsContent value="my-docs" className="flex-1 flex flex-col min-h-0 mt-3">
+        <TabsContent
+          value="my-docs"
+          className="flex-1 flex flex-col min-h-0 mt-3"
+        >
           {!isConfigured ? (
             <DingtalkNotConfigured />
-          ) : isLoadingDocs ? (
+          ) : myDocs.isLoading ? (
             <div className="flex-1 flex items-center justify-center">
               <Spinner size="lg" />
             </div>
-          ) : docTotalCount === 0 ? (
+          ) : myDocs.totalCount === 0 ? (
             <DingtalkEmptyState
-              onSync={handleSyncDocs}
-              isSyncing={isSyncingDocs}
-              hint={t('document.dingtalk.syncHint', '点击同步按钮从钉钉拉取文档列表')}
+              onSync={() => handleSync('my-docs')}
+              isSyncing={myDocs.isSyncing}
+              hint={t(
+                'document.dingtalk.syncHint',
+                '点击同步按钮从钉钉拉取文档列表'
+              )}
               t={t}
             />
           ) : (
             <div className="flex-1 overflow-y-auto custom-scrollbar">
-              <DingtalkDocTreeView nodes={docTree} />
+              <DingtalkDocTreeView nodes={myDocs.tree} />
             </div>
           )}
         </TabsContent>
 
-        {/* Wikispace tab */}
-        <TabsContent value="wikispace" className="flex-1 flex flex-col min-h-0 mt-3">
+        {/* My Wikispace tab */}
+        <TabsContent
+          value="my-wikispace"
+          className="flex-1 flex flex-col min-h-0 mt-3"
+        >
           {!isWikispaceConfigured ? (
             <WikispaceNotConfigured t={t} />
-          ) : isLoadingWikispace ? (
+          ) : myWikispace.isLoading ? (
             <div className="flex-1 flex items-center justify-center">
               <Spinner size="lg" />
             </div>
-          ) : wikispaceTotalCount === 0 ? (
+          ) : myWikispace.totalCount === 0 ? (
             <DingtalkEmptyState
-              onSync={handleSyncWikispace}
-              isSyncing={isSyncingWikispace}
-              hint={t('document.dingtalk.wikispaceSyncHint', '点击同步按钮从钉钉拉取知识库')}
+              onSync={() => handleSync('my-wikispace')}
+              isSyncing={myWikispace.isSyncing}
+              hint={t(
+                'document.dingtalk.wikispaceSyncHint',
+                '点击同步按钮从钉钉拉取知识库'
+              )}
               t={t}
             />
           ) : (
             <div className="flex-1 overflow-y-auto custom-scrollbar">
-              <DingtalkDocTreeView nodes={wikispaceTree} />
+              <DingtalkDocTreeView nodes={myWikispace.tree} />
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Org Wikispace tab */}
+        <TabsContent
+          value="org-wikispace"
+          className="flex-1 flex flex-col min-h-0 mt-3"
+        >
+          {!isWikispaceConfigured ? (
+            <WikispaceNotConfigured t={t} />
+          ) : orgWikispace.isLoading ? (
+            <div className="flex-1 flex items-center justify-center">
+              <Spinner size="lg" />
+            </div>
+          ) : orgWikispace.totalCount === 0 ? (
+            <DingtalkEmptyState
+              onSync={() => handleSync('org-wikispace')}
+              isSyncing={orgWikispace.isSyncing}
+              hint={t(
+                'document.dingtalk.wikispaceSyncHint',
+                '点击同步按钮从钉钉拉取知识库'
+              )}
+              t={t}
+            />
+          ) : (
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <DingtalkDocTreeView nodes={orgWikispace.tree} />
             </div>
           )}
         </TabsContent>
@@ -271,7 +398,7 @@ export function DingtalkDocsPage({
   )
 }
 
-/** Shared empty state component used by both tabs. */
+/** Shared empty state component used by all tabs. */
 function DingtalkEmptyState({
   onSync,
   isSyncing,
@@ -290,7 +417,12 @@ function DingtalkEmptyState({
         {t('document.dingtalk.emptyState', '暂无文档')}
       </h3>
       <p className="text-sm text-text-muted mb-4">{hint}</p>
-      <Button variant="primary" onClick={onSync} disabled={isSyncing} className="h-11 min-w-[44px]">
+      <Button
+        variant="primary"
+        onClick={onSync}
+        disabled={isSyncing}
+        className="h-11 min-w-[44px]"
+      >
         {isSyncing ? (
           <>
             <Spinner size="sm" className="mr-1" />
@@ -307,16 +439,22 @@ function DingtalkEmptyState({
   )
 }
 
-/** Shown in wikispace tab when wikispace MCP is not configured. */
+/** Shown in wikispace tabs when wikispace MCP is not configured. */
 function WikispaceNotConfigured({ t }: { t: TFunction }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
       <BookOpen className="w-16 h-16 text-text-muted mb-4" />
       <h3 className="text-lg font-medium text-text-primary mb-2">
-        {t('document.dingtalk.wikispaceNotConfigured', '钉钉知识库 MCP 未配置')}
+        {t(
+          'document.dingtalk.wikispaceNotConfigured',
+          '钉钉知识库 MCP 未配置'
+        )}
       </h3>
       <p className="text-sm text-text-muted mb-4">
-        {t('document.dingtalk.wikispaceConfigureHint', '请前往设置配置钉钉知识库 MCP')}
+        {t(
+          'document.dingtalk.wikispaceConfigureHint',
+          '请前往设置配置钉钉知识库 MCP'
+        )}
       </p>
       <a
         href="/settings?section=integrations&tab=integrations"

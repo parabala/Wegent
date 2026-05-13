@@ -106,6 +106,8 @@
       "lastModified": "最近修改",
       "myDocs": "我的文档",
       "wikispace": "知识库",
+      "myWikispace": "我的知识库",
+      "orgWikispace": "组织知识库",
       "wikispaceSyncHint": "点击同步按钮从钉钉拉取知识库",
       "wikispaceEmpty": "暂无知识库内容",
       "wikispaceNotConfigured": "钉钉知识库 MCP 未配置",

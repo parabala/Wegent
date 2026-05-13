@@ -666,6 +666,8 @@
     "referencedDocsLabel": "引用的钉钉文档：",
     "myDocsTab": "我的文档",
     "wikispaceTab": "知识库",
+    "myWikispaceTab": "我的知识库",
+    "orgWikispaceTab": "组织知识库",
     "wikispaceSync": "同步",
     "wikispaceSyncing": "同步中...",
     "wikispaceEmpty": "暂无知识库内容",

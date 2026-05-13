@@ -7,8 +7,9 @@
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
@@ -142,11 +143,18 @@ wikispace_router = APIRouter()
 
 @wikispace_router.get("", response_model=DingtalkDocTreeResponse)
 def get_wikispace_nodes(
+    wiki_space_type: Optional[str] = Query(
+        None,
+        description="Filter by wiki space type: 'myWikiSpace' or 'orgWikiSpace'. "
+        "Returns all wikispace nodes if not specified.",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> DingtalkDocTreeResponse:
     """Get all synced DingTalk wikispace nodes for the current user as a tree."""
-    nodes = DingTalkWikiSpaceService.get_wikispace_nodes(current_user.id, db)
+    nodes = DingTalkWikiSpaceService.get_wikispace_nodes(
+        current_user.id, db, wiki_space_type=wiki_space_type
+    )
     node_schemas = [DingtalkDocNode.model_validate(node) for node in nodes]
     tree = _build_tree(node_schemas)
     return DingtalkDocTreeResponse(nodes=tree, total_count=len(node_schemas))
@@ -179,9 +187,16 @@ async def sync_wikispace_nodes(
 
 @wikispace_router.get("/sync-status", response_model=DingtalkSyncStatus)
 def get_wikispace_sync_status(
+    wiki_space_type: Optional[str] = Query(
+        None,
+        description="Filter by wiki space type: 'myWikiSpace' or 'orgWikiSpace'. "
+        "Returns aggregated status for all wikispace types if not specified.",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> DingtalkSyncStatus:
     """Get the sync status for the current user's DingTalk wikispace nodes."""
-    status = DingTalkWikiSpaceService.get_sync_status(current_user, db)
+    status = DingTalkWikiSpaceService.get_sync_status(
+        current_user, db, wiki_space_type=wiki_space_type
+    )
     return DingtalkSyncStatus(**status)

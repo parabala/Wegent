@@ -170,14 +170,24 @@ export default function ContextSelector({
   const [dingtalkConfigured, setDingtalkConfigured] = useState(true)
   const [dingtalkLastSyncedAt, setDingtalkLastSyncedAt] = useState<string | null>(null)
   const [dingtalkSearchQuery, setDingtalkSearchQuery] = useState('')
-  // Wikispace (knowledge base) section state
-  const [dingtalkSection, setDingtalkSection] = useState<'my-docs' | 'wikispace'>('my-docs')
-  const [wikispaceNodes, setWikispaceNodes] = useState<DingtalkDocNode[]>([])
-  const [wikispaceLoading, setWikispaceLoading] = useState(false)
-  const [wikispaceSyncing, setWikispaceSyncing] = useState(false)
-  const [wikispaceError, setWikispaceError] = useState<string | null>(null)
-  const [wikispaceConfigured, setWikispaceConfigured] = useState(false)
-  const [wikispaceLastSyncedAt, setWikispaceLastSyncedAt] = useState<string | null>(null)
+  // Wikispace section state - split by wiki space type
+  const [dingtalkSection, setDingtalkSection] = useState<
+    'my-docs' | 'my-wikispace' | 'org-wikispace'
+  >('my-docs')
+  // My Wikispace (personal knowledge base) state
+  const [myWikispaceNodes, setMyWikispaceNodes] = useState<DingtalkDocNode[]>([])
+  const [myWikispaceLoading, setMyWikispaceLoading] = useState(false)
+  const [myWikispaceSyncing, setMyWikispaceSyncing] = useState(false)
+  const [myWikispaceError, setMyWikispaceError] = useState<string | null>(null)
+  const [myWikispaceConfigured, setMyWikispaceConfigured] = useState(false)
+  const [myWikispaceLastSyncedAt, setMyWikispaceLastSyncedAt] = useState<string | null>(null)
+  // Org Wikispace (organization knowledge base) state
+  const [orgWikispaceNodes, setOrgWikispaceNodes] = useState<DingtalkDocNode[]>([])
+  const [orgWikispaceLoading, setOrgWikispaceLoading] = useState(false)
+  const [orgWikispaceSyncing, setOrgWikispaceSyncing] = useState(false)
+  const [orgWikispaceError, setOrgWikispaceError] = useState<string | null>(null)
+  const [orgWikispaceConfigured, setOrgWikispaceConfigured] = useState(false)
+  const [orgWikispaceLastSyncedAt, setOrgWikispaceLastSyncedAt] = useState<string | null>(null)
   const {
     organizationNamespace,
     loading: organizationNamespaceLoading,
@@ -266,24 +276,46 @@ export default function ContextSelector({
     }
   }, [t])
 
-  // Fetch DingTalk wikispace (knowledge base) nodes
-  const fetchWikispace = useCallback(async () => {
-    setWikispaceLoading(true)
-    setWikispaceError(null)
+  // Fetch DingTalk wikispace nodes for both myWikiSpace and orgWikiSpace
+  const fetchMyWikispace = useCallback(async () => {
+    setMyWikispaceLoading(true)
+    setMyWikispaceError(null)
     try {
       const [tree, status] = await Promise.all([
-        dingtalkDocApi.getWikispaceNodes(),
-        dingtalkDocApi.getWikispaceSyncStatus(),
+        dingtalkDocApi.getWikispaceNodes('myWikiSpace'),
+        dingtalkDocApi.getWikispaceSyncStatus('myWikiSpace'),
       ])
-      setWikispaceNodes(tree.nodes)
-      setWikispaceConfigured(status.is_configured)
-      setWikispaceLastSyncedAt(status.last_synced_at)
+      setMyWikispaceNodes(tree.nodes)
+      setMyWikispaceConfigured(status.is_configured)
+      setMyWikispaceLastSyncedAt(status.last_synced_at)
     } catch {
-      setWikispaceError(t('chat:dingtalkDocs.loadFailed'))
+      setMyWikispaceError(t('chat:dingtalkDocs.loadFailed'))
     } finally {
-      setWikispaceLoading(false)
+      setMyWikispaceLoading(false)
     }
   }, [t])
+
+  const fetchOrgWikispace = useCallback(async () => {
+    setOrgWikispaceLoading(true)
+    setOrgWikispaceError(null)
+    try {
+      const [tree, status] = await Promise.all([
+        dingtalkDocApi.getWikispaceNodes('orgWikiSpace'),
+        dingtalkDocApi.getWikispaceSyncStatus('orgWikiSpace'),
+      ])
+      setOrgWikispaceNodes(tree.nodes)
+      setOrgWikispaceConfigured(status.is_configured)
+      setOrgWikispaceLastSyncedAt(status.last_synced_at)
+    } catch {
+      setOrgWikispaceError(t('chat:dingtalkDocs.loadFailed'))
+    } finally {
+      setOrgWikispaceLoading(false)
+    }
+  }, [t])
+
+  const fetchAllWikispace = useCallback(async () => {
+    await Promise.all([fetchMyWikispace(), fetchOrgWikispace()])
+  }, [fetchMyWikispace, fetchOrgWikispace])
 
   const handleDingtalkSync = useCallback(async () => {
     setDingtalkSyncing(true)
@@ -299,28 +331,32 @@ export default function ContextSelector({
   }, [fetchDingtalkDocs, t])
 
   const handleWikispaceSync = useCallback(async () => {
-    setWikispaceSyncing(true)
-    setWikispaceError(null)
+    setMyWikispaceSyncing(true)
+    setOrgWikispaceSyncing(true)
+    setMyWikispaceError(null)
+    setOrgWikispaceError(null)
     try {
       await dingtalkDocApi.syncWikispaceNodes()
-      await fetchWikispace()
+      await fetchAllWikispace()
     } catch {
-      setWikispaceError(t('chat:dingtalkDocs.syncFailed'))
+      setMyWikispaceError(t('chat:dingtalkDocs.syncFailed'))
+      setOrgWikispaceError(t('chat:dingtalkDocs.syncFailed'))
     } finally {
-      setWikispaceSyncing(false)
+      setMyWikispaceSyncing(false)
+      setOrgWikispaceSyncing(false)
     }
-  }, [fetchWikispace, t])
+  }, [fetchAllWikispace, t])
 
   const handleTabChange = useCallback(
     (value: string) => {
       setActiveTab(value)
       if (value === 'dingtalk' && !hasFetchedDingtalk) {
         fetchDingtalkDocs()
-        fetchWikispace()
+        fetchAllWikispace()
         setHasFetchedDingtalk(true)
       }
     },
-    [fetchDingtalkDocs, fetchWikispace, hasFetchedDingtalk]
+    [fetchDingtalkDocs, fetchAllWikispace, hasFetchedDingtalk]
   )
 
   // Group knowledge bases by category (personal, group, organization)
@@ -950,7 +986,7 @@ export default function ContextSelector({
 
           {/* DingTalk Docs Tab */}
           <TabsContent value="dingtalk" className="m-0 flex flex-col">
-            {/* Section switcher: 我的文档 / 知识库 — always visible */}
+            {/* Section switcher: 我的文档 / 我的知识库 / 组织知识库 — always visible */}
             <div className="flex border-b border-border flex-shrink-0">
               <button
                 type="button"
@@ -967,16 +1003,29 @@ export default function ContextSelector({
               </button>
               <button
                 type="button"
-                onClick={() => setDingtalkSection('wikispace')}
+                onClick={() => setDingtalkSection('my-wikispace')}
                 className={cn(
                   'flex-1 py-1.5 text-xs font-medium transition-colors',
-                  dingtalkSection === 'wikispace'
+                  dingtalkSection === 'my-wikispace'
                     ? 'text-text-primary border-b-2 border-orange-500'
                     : 'text-text-muted hover:text-text-primary'
                 )}
-                data-testid="dingtalk-section-wikispace"
+                data-testid="dingtalk-section-my-wikispace"
               >
-                {t('chat:dingtalkDocs.wikispaceTab')}
+                {t('chat:dingtalkDocs.myWikispaceTab')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDingtalkSection('org-wikispace')}
+                className={cn(
+                  'flex-1 py-1.5 text-xs font-medium transition-colors',
+                  dingtalkSection === 'org-wikispace'
+                    ? 'text-text-primary border-b-2 border-orange-500'
+                    : 'text-text-muted hover:text-text-primary'
+                )}
+                data-testid="dingtalk-section-org-wikispace"
+              >
+                {t('chat:dingtalkDocs.orgWikispaceTab')}
               </button>
             </div>
 
@@ -1022,28 +1071,55 @@ export default function ContextSelector({
                     </button>
                   )}
                 </>
-              ) : (
+              ) : dingtalkSection === 'my-wikispace' ? (
                 <>
                   <span className="text-xs text-text-muted">
-                    {wikispaceConfigured && wikispaceLastSyncedAt
+                    {myWikispaceConfigured && myWikispaceLastSyncedAt
                       ? t('chat:dingtalkDocs.lastSynced', {
-                          time: new Date(wikispaceLastSyncedAt).toLocaleString(),
+                          time: new Date(myWikispaceLastSyncedAt).toLocaleString(),
                         })
                       : null}
                   </span>
-                  {wikispaceConfigured && (
+                  {myWikispaceConfigured && (
                     <button
                       type="button"
                       onClick={handleWikispaceSync}
-                      disabled={wikispaceSyncing}
+                      disabled={myWikispaceSyncing}
                       className={cn(
                         'flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors',
-                        wikispaceSyncing && 'opacity-50 cursor-not-allowed'
+                        myWikispaceSyncing && 'opacity-50 cursor-not-allowed'
                       )}
                       data-testid="context-selector-wikispace-sync"
                     >
-                      <RefreshCw className={cn('w-3 h-3', wikispaceSyncing && 'animate-spin')} />
-                      {wikispaceSyncing
+                      <RefreshCw className={cn('w-3 h-3', myWikispaceSyncing && 'animate-spin')} />
+                      {myWikispaceSyncing
+                        ? t('chat:dingtalkDocs.syncing')
+                        : t('chat:dingtalkDocs.sync')}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <span className="text-xs text-text-muted">
+                    {orgWikispaceConfigured && orgWikispaceLastSyncedAt
+                      ? t('chat:dingtalkDocs.lastSynced', {
+                          time: new Date(orgWikispaceLastSyncedAt).toLocaleString(),
+                        })
+                      : null}
+                  </span>
+                  {orgWikispaceConfigured && (
+                    <button
+                      type="button"
+                      onClick={handleWikispaceSync}
+                      disabled={orgWikispaceSyncing}
+                      className={cn(
+                        'flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors',
+                        orgWikispaceSyncing && 'opacity-50 cursor-not-allowed'
+                      )}
+                      data-testid="context-selector-wikispace-sync"
+                    >
+                      <RefreshCw className={cn('w-3 h-3', orgWikispaceSyncing && 'animate-spin')} />
+                      {orgWikispaceSyncing
                         ? t('chat:dingtalkDocs.syncing')
                         : t('chat:dingtalkDocs.sync')}
                     </button>
@@ -1110,57 +1186,119 @@ export default function ContextSelector({
                     ))}
                   </div>
                 )
-              ) : wikispaceLoading ? (
-                <div className="py-6 px-4 text-center text-sm text-text-muted">
-                  {t('common:actions.loading')}
-                </div>
-              ) : !wikispaceConfigured ? (
-                <div className="py-6 px-4 text-center space-y-3">
-                  <p className="text-sm text-text-muted">
-                    {t('chat:dingtalkDocs.wikispaceNotConfigured')}
-                  </p>
-                  <Link
-                    href="/settings?section=integrations&tab=integrations"
-                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium transition-colors"
-                  >
-                    {t('chat:dingtalkDocs.goToConfigure')}
-                  </Link>
-                </div>
-              ) : wikispaceError ? (
-                <div className="py-6 px-4 text-center space-y-2">
-                  <p className="text-sm text-red-500">{wikispaceError}</p>
-                  <button onClick={fetchWikispace} className="text-xs text-primary hover:underline">
-                    {t('common:actions.retry')}
-                  </button>
-                </div>
-              ) : wikispaceNodes.length === 0 ? (
-                <div className="py-6 px-4 text-center space-y-3">
-                  <p className="text-sm text-text-muted">{t('chat:dingtalkDocs.empty')}</p>
-                  <button
-                    type="button"
-                    onClick={handleWikispaceSync}
-                    disabled={wikispaceSyncing}
-                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium transition-colors disabled:opacity-50"
-                  >
-                    <RefreshCw className={cn('w-3.5 h-3.5', wikispaceSyncing && 'animate-spin')} />
-                    {wikispaceSyncing
-                      ? t('chat:dingtalkDocs.syncing')
-                      : t('chat:dingtalkDocs.syncNow')}
-                  </button>
-                </div>
+              ) : dingtalkSection === 'my-wikispace' ? (
+                myWikispaceLoading ? (
+                  <div className="py-6 px-4 text-center text-sm text-text-muted">
+                    {t('common:actions.loading')}
+                  </div>
+                ) : !myWikispaceConfigured ? (
+                  <div className="py-6 px-4 text-center space-y-3">
+                    <p className="text-sm text-text-muted">
+                      {t('chat:dingtalkDocs.wikispaceNotConfigured')}
+                    </p>
+                    <Link
+                      href="/settings?section=integrations&tab=integrations"
+                      className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium transition-colors"
+                    >
+                      {t('chat:dingtalkDocs.goToConfigure')}
+                    </Link>
+                  </div>
+                ) : myWikispaceError ? (
+                  <div className="py-6 px-4 text-center space-y-2">
+                    <p className="text-sm text-red-500">{myWikispaceError}</p>
+                    <button
+                      onClick={fetchMyWikispace}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      {t('common:actions.retry')}
+                    </button>
+                  </div>
+                ) : myWikispaceNodes.length === 0 ? (
+                  <div className="py-6 px-4 text-center space-y-3">
+                    <p className="text-sm text-text-muted">{t('chat:dingtalkDocs.empty')}</p>
+                    <button
+                      type="button"
+                      onClick={handleWikispaceSync}
+                      disabled={myWikispaceSyncing}
+                      className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw className={cn('w-3.5 h-3.5', myWikispaceSyncing && 'animate-spin')} />
+                      {myWikispaceSyncing
+                        ? t('chat:dingtalkDocs.syncing')
+                        : t('chat:dingtalkDocs.syncNow')}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="py-1 px-1">
+                    {myWikispaceNodes.map(node => (
+                      <DingtalkContextTreeNode
+                        key={node.dingtalk_node_id}
+                        node={node}
+                        level={0}
+                        selectedIds={selectedDingTalkIds}
+                        onToggle={handleDingtalkToggle}
+                        searchQuery={dingtalkSearchQuery}
+                      />
+                    ))}
+                  </div>
+                )
               ) : (
-                <div className="py-1 px-1">
-                  {wikispaceNodes.map(node => (
-                    <DingtalkContextTreeNode
-                      key={node.dingtalk_node_id}
-                      node={node}
-                      level={0}
-                      selectedIds={selectedDingTalkIds}
-                      onToggle={handleDingtalkToggle}
-                      searchQuery={dingtalkSearchQuery}
-                    />
-                  ))}
-                </div>
+                /* org-wikispace */
+                orgWikispaceLoading ? (
+                  <div className="py-6 px-4 text-center text-sm text-text-muted">
+                    {t('common:actions.loading')}
+                  </div>
+                ) : !orgWikispaceConfigured ? (
+                  <div className="py-6 px-4 text-center space-y-3">
+                    <p className="text-sm text-text-muted">
+                      {t('chat:dingtalkDocs.wikispaceNotConfigured')}
+                    </p>
+                    <Link
+                      href="/settings?section=integrations&tab=integrations"
+                      className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium transition-colors"
+                    >
+                      {t('chat:dingtalkDocs.goToConfigure')}
+                    </Link>
+                  </div>
+                ) : orgWikispaceError ? (
+                  <div className="py-6 px-4 text-center space-y-2">
+                    <p className="text-sm text-red-500">{orgWikispaceError}</p>
+                    <button
+                      onClick={fetchOrgWikispace}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      {t('common:actions.retry')}
+                    </button>
+                  </div>
+                ) : orgWikispaceNodes.length === 0 ? (
+                  <div className="py-6 px-4 text-center space-y-3">
+                    <p className="text-sm text-text-muted">{t('chat:dingtalkDocs.empty')}</p>
+                    <button
+                      type="button"
+                      onClick={handleWikispaceSync}
+                      disabled={orgWikispaceSyncing}
+                      className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw className={cn('w-3.5 h-3.5', orgWikispaceSyncing && 'animate-spin')} />
+                      {orgWikispaceSyncing
+                        ? t('chat:dingtalkDocs.syncing')
+                        : t('chat:dingtalkDocs.syncNow')}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="py-1 px-1">
+                    {orgWikispaceNodes.map(node => (
+                      <DingtalkContextTreeNode
+                        key={node.dingtalk_node_id}
+                        node={node}
+                        level={0}
+                        selectedIds={selectedDingTalkIds}
+                        onToggle={handleDingtalkToggle}
+                        searchQuery={dingtalkSearchQuery}
+                      />
+                    ))}
+                  </div>
+                )
               )}
             </div>
           </TabsContent>

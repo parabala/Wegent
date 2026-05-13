@@ -39,27 +39,25 @@ def _make_mcp_result(data: object) -> MagicMock:
     return result
 
 
+# Helper to create a _list_wiki_spaces mock that only returns KBs for
+# orgWikiSpace (matching original behaviour before myWikiSpace was added).
+def _list_spaces_org_only(kb_nodes: list):
+    """Return a callable suitable for patching _list_wiki_spaces.
+
+    Returns kb_nodes for orgWikiSpace and an empty list for myWikiSpace.
+    """
+
+    async def _fn(wikispace_mcp_url: str, wiki_space_type: str = "orgWikiSpace"):
+        if wiki_space_type == "orgWikiSpace":
+            return list(kb_nodes)
+        return []
+
+    return _fn
+
+
 # ---------------------------------------------------------------------------
 # _list_wiki_spaces
 # ---------------------------------------------------------------------------
-
-
-def _build_mcp_http_patches(mock_session: AsyncMock):
-    """Return a context that patches the MCP transport and session for _list_wiki_spaces."""
-    import contextlib
-
-    @contextlib.asynccontextmanager
-    async def fake_http(*args, **kwargs):
-        yield MagicMock(), MagicMock(), None
-
-    @contextlib.asynccontextmanager
-    async def fake_session_cls(*args, **kwargs):
-        yield mock_session
-
-    return (
-        patch("mcp.client.streamable_http.streamablehttp_client", fake_http),
-        patch("mcp.ClientSession", fake_session_cls),
-    )
 
 
 class TestListWikiSpaces:
@@ -72,44 +70,6 @@ class TestListWikiSpaces:
             {"workspaceId": "WS001", "name": "KB One"},
             {"workspaceId": "WS002", "name": "KB Two"},
         ]
-
-        mock_session = AsyncMock()
-        mock_session.list_tools.return_value = MagicMock(tools=[])
-        mock_session.call_tool.return_value = _make_mcp_result({"items": kb_data})
-
-        with patch.object(
-            DingTalkWikiSpaceService,
-            "_list_wiki_spaces",
-            wraps=DingTalkWikiSpaceService._list_wiki_spaces,
-        ):
-            # Patch the lazy imports used inside _list_wiki_spaces
-            with (
-                patch("mcp.client.streamable_http.streamablehttp_client") as mock_http,
-                patch("mcp.ClientSession") as mock_cls,
-            ):
-                mock_http.return_value.__aenter__ = AsyncMock(
-                    return_value=(MagicMock(), MagicMock(), None)
-                )
-                mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
-                mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-                mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-
-                # Call via the module path that the code actually uses
-                with (
-                    patch(
-                        "app.services.dingtalk_wikispace_service.streamablehttp_client",
-                        mock_http,
-                        create=True,
-                    ),
-                    patch(
-                        "app.services.dingtalk_wikispace_service.ClientSession",
-                        mock_cls,
-                        create=True,
-                    ),
-                ):
-                    pass  # patches applied below
-
-        # Simpler approach: directly test via _parse_list_nodes_result
         result, token = DingTalkDocService._parse_list_nodes_result(
             _make_mcp_result({"items": kb_data})
         )
@@ -183,7 +143,7 @@ class TestFetchAllWikispaceNodes:
             patch.object(
                 DingTalkWikiSpaceService,
                 "_list_wiki_spaces",
-                new=AsyncMock(return_value=kb_nodes),
+                new=_list_spaces_org_only(kb_nodes),
             ),
             patch.object(
                 DingTalkWikiSpaceService,
@@ -202,6 +162,7 @@ class TestFetchAllWikispaceNodes:
         assert kb_root["nodeType"] == "folder"
         assert kb_root["workspaceId"] == "WSABC"
         assert kb_root["name"] == "Test KB"
+        assert kb_root["wikiSpaceType"] == "orgWikiSpace"
 
     @pytest.mark.asyncio
     async def test_uses_wikispace_mcp_url_as_docs_fallback(self) -> None:
@@ -210,7 +171,7 @@ class TestFetchAllWikispaceNodes:
         captured_urls: list[str] = []
 
         async def capture_url(
-            docs_mcp_url: str, workspace_id: str, all_nodes: list
+            docs_mcp_url: str, workspace_id: str, all_nodes: list, wiki_space_type: str = ""
         ) -> None:
             captured_urls.append(docs_mcp_url)
 
@@ -218,7 +179,7 @@ class TestFetchAllWikispaceNodes:
             patch.object(
                 DingTalkWikiSpaceService,
                 "_list_wiki_spaces",
-                new=AsyncMock(return_value=kb_nodes),
+                new=_list_spaces_org_only(kb_nodes),
             ),
             patch.object(
                 DingTalkWikiSpaceService,
@@ -243,7 +204,7 @@ class TestFetchAllWikispaceNodes:
         list_nodes_calls: list[str] = []
 
         async def track_call(
-            docs_mcp_url: str, workspace_id: str, all_nodes: list
+            docs_mcp_url: str, workspace_id: str, all_nodes: list, wiki_space_type: str = ""
         ) -> None:
             list_nodes_calls.append(workspace_id)
 
@@ -251,7 +212,7 @@ class TestFetchAllWikispaceNodes:
             patch.object(
                 DingTalkWikiSpaceService,
                 "_list_wiki_spaces",
-                new=AsyncMock(return_value=kb_nodes),
+                new=_list_spaces_org_only(kb_nodes),
             ),
             patch.object(
                 DingTalkWikiSpaceService,
@@ -279,7 +240,7 @@ class TestFetchAllWikispaceNodes:
         call_count = 0
 
         async def maybe_fail(
-            docs_mcp_url: str, workspace_id: str, all_nodes: list
+            docs_mcp_url: str, workspace_id: str, all_nodes: list, wiki_space_type: str = ""
         ) -> None:
             nonlocal call_count
             call_count += 1
@@ -290,7 +251,7 @@ class TestFetchAllWikispaceNodes:
             patch.object(
                 DingTalkWikiSpaceService,
                 "_list_wiki_spaces",
-                new=AsyncMock(return_value=kb_nodes),
+                new=_list_spaces_org_only(kb_nodes),
             ),
             patch.object(
                 DingTalkWikiSpaceService,

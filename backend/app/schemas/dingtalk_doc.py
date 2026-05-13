@@ -21,6 +21,7 @@ class DingtalkDocNodeBase(BaseModel):
     parent_node_id: str = ""
     node_type: str  # folder, doc, file
     workspace_id: str = ""
+    wiki_space_type: str = ""  # 'myWikiSpace' or 'orgWikiSpace' for wikispace nodes
     content_type: str = ""
     content_updated_at: datetime
 

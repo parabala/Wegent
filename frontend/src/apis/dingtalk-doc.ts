@@ -44,9 +44,13 @@ export const dingtalkDocApi = {
 
   /**
    * Get all synced DingTalk wikispace nodes as a tree structure.
+   * @param wikiSpaceType - Optional filter: 'myWikiSpace' or 'orgWikiSpace'
    */
-  getWikispaceNodes: async (): Promise<DingtalkDocTreeResponse> => {
-    return client.get<DingtalkDocTreeResponse>('/dingtalk-wikispace')
+  getWikispaceNodes: async (
+    wikiSpaceType?: string
+  ): Promise<DingtalkDocTreeResponse> => {
+    const params = wikiSpaceType ? `?wiki_space_type=${encodeURIComponent(wikiSpaceType)}` : ''
+    return client.get<DingtalkDocTreeResponse>(`/dingtalk-wikispace${params}`)
   },
 
   /**
@@ -58,8 +62,12 @@ export const dingtalkDocApi = {
 
   /**
    * Get the wikispace sync status for the current user.
+   * @param wikiSpaceType - Optional filter: 'myWikiSpace' or 'orgWikiSpace'
    */
-  getWikispaceSyncStatus: async (): Promise<DingtalkSyncStatus> => {
-    return client.get<DingtalkSyncStatus>('/dingtalk-wikispace/sync-status')
+  getWikispaceSyncStatus: async (
+    wikiSpaceType?: string
+  ): Promise<DingtalkSyncStatus> => {
+    const params = wikiSpaceType ? `?wiki_space_type=${encodeURIComponent(wikiSpaceType)}` : ''
+    return client.get<DingtalkSyncStatus>(`/dingtalk-wikispace/sync-status${params}`)
   },
 }

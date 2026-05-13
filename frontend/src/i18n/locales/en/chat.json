@@ -688,6 +688,8 @@
     "referencedDocsLabel": "Referenced DingTalk Documents:",
     "myDocsTab": "My Documents",
     "wikispaceTab": "Knowledge Base",
+    "myWikispaceTab": "My Knowledge Base",
+    "orgWikispaceTab": "Org Knowledge Base",
     "wikispaceSync": "Sync",
     "wikispaceSyncing": "Syncing...",
     "wikispaceEmpty": "No knowledge base content",

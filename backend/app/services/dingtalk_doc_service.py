@@ -132,6 +132,7 @@ class DingTalkDocService:
         workspace_id: str | None,
         all_nodes: list[dict[str, Any]],
         depth: int,
+        extra_tags: dict[str, str] | None = None,
     ) -> None:
         """Recursively list nodes from the MCP server.
 
@@ -142,6 +143,9 @@ class DingTalkDocService:
         call list_nodes(folderId=X), all returned nodes are children of X.
         We therefore inject the parentId manually into each returned node so
         that _sync_nodes_to_db can persist the correct parent_node_id.
+
+        extra_tags: optional dict of key-value pairs to inject into every
+        returned node (e.g. wikiSpaceType for wikispace nodes).
         """
         if depth >= MAX_RECURSION_DEPTH:
             logger.warning(
@@ -175,6 +179,11 @@ class DingTalkDocService:
             for node in nodes_data:
                 if folder_id and not node.get("parentId"):
                     node["parentId"] = folder_id
+                # Inject extra tags (e.g. wikiSpaceType for wikispace nodes)
+                if extra_tags:
+                    for key, val in extra_tags.items():
+                        if key not in node:
+                            node[key] = val
 
             all_nodes.extend(nodes_data)
 
@@ -191,6 +200,7 @@ class DingTalkDocService:
                         workspace_id=ws_id,
                         all_nodes=all_nodes,
                         depth=depth + 1,
+                        extra_tags=extra_tags,
                     )
 
             # Check for more pages: prefer token from parsed payload, fall back to result.meta
@@ -383,6 +393,7 @@ class DingTalkDocService:
             )
             workspace_id = node_data.get("workspaceId") or ""
             content_type = node_data.get("contentType") or ""
+            wiki_space_type = node_data.get("wikiSpaceType") or ""
             content_updated_at = DingTalkDocService._parse_update_time(
                 node_data.get("updateTime"), sync_time
             )
@@ -411,6 +422,9 @@ class DingTalkDocService:
                 if existing.content_type != content_type:
                     existing.content_type = content_type
                     changed = True
+                if existing.wiki_space_type != wiki_space_type:
+                    existing.wiki_space_type = wiki_space_type
+                    changed = True
                 if existing.content_updated_at != content_updated_at:
                     existing.content_updated_at = content_updated_at
                     changed = True
@@ -435,6 +449,7 @@ class DingTalkDocService:
                     node_type=node_type,
                     workspace_id=workspace_id,
                     content_type=content_type,
+                    wiki_space_type=wiki_space_type,
                     content_updated_at=content_updated_at,
                     is_active=True,
                     last_synced_at=sync_time,

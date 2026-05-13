@@ -106,6 +106,8 @@
       "lastModified": "Last modified",
       "myDocs": "My Documents",
       "wikispace": "Knowledge Base",
+      "myWikispace": "My Knowledge Base",
+      "orgWikispace": "Org Knowledge Base",
       "wikispaceSyncHint": "Click sync to pull knowledge bases from DingTalk",
       "wikispaceEmpty": "No knowledge base content",
       "wikispaceNotConfigured": "DingTalk Knowledge Base MCP is not configured",
