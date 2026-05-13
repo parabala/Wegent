@@ -276,14 +276,14 @@ export default function ContextSelector({
     }
   }, [t])
 
-  // Fetch DingTalk wikispace nodes for both myWikiSpace and orgWikiSpace
+  // Fetch DingTalk wikispace nodes for both mywikispace and orgwikispace
   const fetchMyWikispace = useCallback(async () => {
     setMyWikispaceLoading(true)
     setMyWikispaceError(null)
     try {
       const [tree, status] = await Promise.all([
-        dingtalkDocApi.getWikispaceNodes('myWikiSpace'),
-        dingtalkDocApi.getWikispaceSyncStatus('myWikiSpace'),
+        dingtalkDocApi.getWikispaceNodes('mywikispace'),
+        dingtalkDocApi.getWikispaceSyncStatus('mywikispace'),
       ])
       setMyWikispaceNodes(tree.nodes)
       setMyWikispaceConfigured(status.is_configured)
@@ -300,8 +300,8 @@ export default function ContextSelector({
     setOrgWikispaceError(null)
     try {
       const [tree, status] = await Promise.all([
-        dingtalkDocApi.getWikispaceNodes('orgWikiSpace'),
-        dingtalkDocApi.getWikispaceSyncStatus('orgWikiSpace'),
+        dingtalkDocApi.getWikispaceNodes('orgwikispace'),
+        dingtalkDocApi.getWikispaceSyncStatus('orgwikispace'),
       ])
       setOrgWikispaceNodes(tree.nodes)
       setOrgWikispaceConfigured(status.is_configured)

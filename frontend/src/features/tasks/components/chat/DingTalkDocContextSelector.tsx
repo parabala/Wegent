@@ -365,7 +365,7 @@ export function DingTalkDocContextSelector({
   const fetchWikispace = useCallback(
     async (section: SectionKey) => {
       const wikiSpaceType =
-        section === 'my-wikispace' ? 'myWikiSpace' : 'orgWikiSpace'
+        section === 'my-wikispace' ? 'mywikispace' : 'orgwikispace'
       const updater = section === 'my-wikispace' ? setMyWikispace : setOrgWikispace
       updater(prev => ({ ...prev, loading: true, error: null }))
       try {

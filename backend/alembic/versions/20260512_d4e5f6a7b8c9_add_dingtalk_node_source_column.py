@@ -37,25 +37,9 @@ def upgrade() -> None:
         ["user_id", "dingtalk_node_id", "source"],
         unique=True,
     )
-    op.add_column(
-        "dingtalk_synced_nodes",
-        sa.Column(
-            "wiki_space_type", sa.String(16), nullable=False, server_default=""
-        ),
-    )
-    op.create_index(
-        "ix_dingtalk_nodes_wiki_space_type",
-        "dingtalk_synced_nodes",
-        ["user_id", "source", "wiki_space_type"],
-        unique=False,
-    )
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_dingtalk_nodes_wiki_space_type", table_name="dingtalk_synced_nodes"
-    )
-    op.drop_column("dingtalk_synced_nodes", "wiki_space_type")
     op.drop_index(
         "ix_dingtalk_nodes_user_node_source", table_name="dingtalk_synced_nodes"
     )

@@ -15,7 +15,8 @@ import pytest
 from app.services.dingtalk_doc_service import DingTalkDocService
 from app.services.dingtalk_wikispace_service import (
     MCP_TOOL_LIST_WIKI_SPACES,
-    WIKISPACE_SOURCE,
+    SOURCE_MY_WIKISPACE,
+    SOURCE_ORG_WIKISPACE,
     DingTalkWikiSpaceService,
 )
 
@@ -45,6 +46,7 @@ def _list_spaces_org_only(kb_nodes: list):
     """Return a callable suitable for patching _list_wiki_spaces.
 
     Returns kb_nodes for orgWikiSpace and an empty list for myWikiSpace.
+    Each node is tagged with _source=SOURCE_ORG_WIKISPACE.
     """
 
     async def _fn(wikispace_mcp_url: str, wiki_space_type: str = "orgWikiSpace"):
@@ -53,6 +55,19 @@ def _list_spaces_org_only(kb_nodes: list):
         return []
 
     return _fn
+
+
+def _make_sync_stats(**overrides) -> dict:
+    """Build a sync-stats dict with sensible defaults."""
+    defaults = {
+        "added": 0,
+        "updated": 0,
+        "deleted": 0,
+        "total": 0,
+        "sync_time": datetime.now(),
+    }
+    defaults.update(overrides)
+    return defaults
 
 
 # ---------------------------------------------------------------------------
@@ -136,8 +151,10 @@ class TestFetchAllWikispaceNodes:
 
     @pytest.mark.asyncio
     async def test_adds_kb_root_as_folder_node(self) -> None:
-        """Each knowledge base is added as a folder-type root node."""
-        kb_nodes = [{"workspaceId": "WSABC", "name": "Test KB"}]
+        """Each knowledge base is added as a folder-type root node with _source tag."""
+        kb_nodes = [
+            {"workspaceId": "WSABC", "name": "Test KB", "_source": SOURCE_ORG_WIKISPACE}
+        ]
 
         with (
             patch.object(
@@ -162,16 +179,21 @@ class TestFetchAllWikispaceNodes:
         assert kb_root["nodeType"] == "folder"
         assert kb_root["workspaceId"] == "WSABC"
         assert kb_root["name"] == "Test KB"
-        assert kb_root["wikiSpaceType"] == "orgWikiSpace"
+        assert kb_root["_source"] == SOURCE_ORG_WIKISPACE
 
     @pytest.mark.asyncio
     async def test_uses_wikispace_mcp_url_as_docs_fallback(self) -> None:
         """Falls back to wikispace MCP URL when docs MCP URL is not configured."""
-        kb_nodes = [{"workspaceId": "WS1", "name": "KB 1"}]
+        kb_nodes = [
+            {"workspaceId": "WS1", "name": "KB 1", "_source": SOURCE_ORG_WIKISPACE}
+        ]
         captured_urls: list[str] = []
 
         async def capture_url(
-            docs_mcp_url: str, workspace_id: str, all_nodes: list, wiki_space_type: str = ""
+            docs_mcp_url: str,
+            workspace_id: str,
+            all_nodes: list,
+            source_tag: str = "",
         ) -> None:
             captured_urls.append(docs_mcp_url)
 
@@ -198,13 +220,16 @@ class TestFetchAllWikispaceNodes:
     async def test_skips_kb_with_no_workspace_id(self) -> None:
         """Skips KB nodes that have no workspaceId/nodeId/id field."""
         kb_nodes = [
-            {"name": "No ID KB"},  # missing workspaceId
-            {"workspaceId": "WS2", "name": "Good KB"},
+            {"name": "No ID KB", "_source": SOURCE_ORG_WIKISPACE},  # missing workspaceId
+            {"workspaceId": "WS2", "name": "Good KB", "_source": SOURCE_ORG_WIKISPACE},
         ]
         list_nodes_calls: list[str] = []
 
         async def track_call(
-            docs_mcp_url: str, workspace_id: str, all_nodes: list, wiki_space_type: str = ""
+            docs_mcp_url: str,
+            workspace_id: str,
+            all_nodes: list,
+            source_tag: str = "",
         ) -> None:
             list_nodes_calls.append(workspace_id)
 
@@ -234,13 +259,16 @@ class TestFetchAllWikispaceNodes:
     async def test_continues_after_kb_error(self) -> None:
         """Continues syncing remaining KBs even if one fails."""
         kb_nodes = [
-            {"workspaceId": "WS_FAIL", "name": "Failing KB"},
-            {"workspaceId": "WS_OK", "name": "Good KB"},
+            {"workspaceId": "WS_FAIL", "name": "Failing KB", "_source": SOURCE_ORG_WIKISPACE},
+            {"workspaceId": "WS_OK", "name": "Good KB", "_source": SOURCE_ORG_WIKISPACE},
         ]
         call_count = 0
 
         async def maybe_fail(
-            docs_mcp_url: str, workspace_id: str, all_nodes: list, wiki_space_type: str = ""
+            docs_mcp_url: str,
+            workspace_id: str,
+            all_nodes: list,
+            source_tag: str = "",
         ) -> None:
             nonlocal call_count
             call_count += 1
@@ -327,13 +355,7 @@ class TestSyncWikispaceNodes:
             patch(
                 "app.services.dingtalk_wikispace_service.DingTalkDocService"
                 "._sync_nodes_to_db",
-                return_value={
-                    "added": 0,
-                    "updated": 0,
-                    "deleted": 0,
-                    "total": 0,
-                    "sync_time": datetime.now(),
-                },
+                return_value=_make_sync_stats(),
             ),
         ):
             await DingTalkWikiSpaceService.sync_wikispace_nodes(mock_user, mock_db)

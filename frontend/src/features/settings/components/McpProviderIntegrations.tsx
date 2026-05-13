@@ -40,8 +40,8 @@ function McpProviderServiceCard({
   return (
     <div className="space-y-3 rounded-md border border-border bg-base p-4">
       <div className="space-y-1">
-        <h3 className="text-base font-medium text-text-primary">{t(`${baseKey}.title`)}</h3>
-        <p className="text-sm text-text-muted">{t(`${baseKey}.description`)}</p>
+        <h3 className="text-base font-medium text-text-primary">{t(`${baseKey}.title`, service.server_name || service.service_id)}</h3>
+        <p className="text-sm text-text-muted">{t(`${baseKey}.description`, '')}</p>
       </div>
 
       <div className="flex items-center justify-between rounded-md border border-border/70 bg-surface px-3 py-2.5">
@@ -50,9 +50,9 @@ function McpProviderServiceCard({
             htmlFor={`${providerId}-${service.service_id}-enabled`}
             className="text-sm font-medium"
           >
-            {t(`${baseKey}.enable_label`)}
+            {t(`${baseKey}.enable_label`, 'Enable Service')}
           </Label>
-          <p className="text-xs text-text-muted">{t(`${baseKey}.enable_hint`)}</p>
+          <p className="text-xs text-text-muted">{t(`${baseKey}.enable_hint`, '')}</p>
         </div>
         <Switch
           id={`${providerId}-${service.service_id}-enabled`}
@@ -128,7 +128,7 @@ export default function McpProviderIntegrations({ providerId }: { providerId: st
       } catch {
         toast({
           variant: 'destructive',
-          title: t(`${providerId}.load_failed`),
+          title: t(`${providerId}.load_failed`, `Failed to load ${providerId} configuration`),
         })
       } finally {
         setLoading(false)
@@ -168,7 +168,7 @@ export default function McpProviderIntegrations({ providerId }: { providerId: st
 
       updateServiceState(serviceId, () => ({ ...saved, draftUrl: saved.url }))
       toast({
-        title: t(`${providerId}.services.${serviceId}.save_success`),
+        title: t(`${providerId}.services.${serviceId}.save_success`, `${serviceId} configuration saved`),
       })
     } catch (error) {
       toast({

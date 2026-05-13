@@ -44,12 +44,12 @@ export const dingtalkDocApi = {
 
   /**
    * Get all synced DingTalk wikispace nodes as a tree structure.
-   * @param wikiSpaceType - Optional filter: 'myWikiSpace' or 'orgWikiSpace'
+   * @param source - Optional filter: 'mywikispace' or 'orgwikispace'
    */
   getWikispaceNodes: async (
-    wikiSpaceType?: string
+    source?: string
   ): Promise<DingtalkDocTreeResponse> => {
-    const params = wikiSpaceType ? `?wiki_space_type=${encodeURIComponent(wikiSpaceType)}` : ''
+    const params = source ? `?source=${encodeURIComponent(source)}` : ''
     return client.get<DingtalkDocTreeResponse>(`/dingtalk-wikispace${params}`)
   },
 
@@ -62,12 +62,12 @@ export const dingtalkDocApi = {
 
   /**
    * Get the wikispace sync status for the current user.
-   * @param wikiSpaceType - Optional filter: 'myWikiSpace' or 'orgWikiSpace'
+   * @param source - Optional filter: 'mywikispace' or 'orgwikispace'
    */
   getWikispaceSyncStatus: async (
-    wikiSpaceType?: string
+    source?: string
   ): Promise<DingtalkSyncStatus> => {
-    const params = wikiSpaceType ? `?wiki_space_type=${encodeURIComponent(wikiSpaceType)}` : ''
+    const params = source ? `?source=${encodeURIComponent(source)}` : ''
     return client.get<DingtalkSyncStatus>(`/dingtalk-wikispace/sync-status${params}`)
   },
 }

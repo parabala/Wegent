@@ -143,9 +143,9 @@ wikispace_router = APIRouter()
 
 @wikispace_router.get("", response_model=DingtalkDocTreeResponse)
 def get_wikispace_nodes(
-    wiki_space_type: Optional[str] = Query(
+    source: Optional[str] = Query(
         None,
-        description="Filter by wiki space type: 'myWikiSpace' or 'orgWikiSpace'. "
+        description="Filter by source value: 'mywikispace' or 'orgwikispace'. "
         "Returns all wikispace nodes if not specified.",
     ),
     db: Session = Depends(get_db),
@@ -153,7 +153,7 @@ def get_wikispace_nodes(
 ) -> DingtalkDocTreeResponse:
     """Get all synced DingTalk wikispace nodes for the current user as a tree."""
     nodes = DingTalkWikiSpaceService.get_wikispace_nodes(
-        current_user.id, db, wiki_space_type=wiki_space_type
+        current_user.id, db, wiki_space_type=source
     )
     node_schemas = [DingtalkDocNode.model_validate(node) for node in nodes]
     tree = _build_tree(node_schemas)
@@ -187,9 +187,9 @@ async def sync_wikispace_nodes(
 
 @wikispace_router.get("/sync-status", response_model=DingtalkSyncStatus)
 def get_wikispace_sync_status(
-    wiki_space_type: Optional[str] = Query(
+    source: Optional[str] = Query(
         None,
-        description="Filter by wiki space type: 'myWikiSpace' or 'orgWikiSpace'. "
+        description="Filter by source value: 'mywikispace' or 'orgwikispace'. "
         "Returns aggregated status for all wikispace types if not specified.",
     ),
     db: Session = Depends(get_db),
@@ -197,6 +197,6 @@ def get_wikispace_sync_status(
 ) -> DingtalkSyncStatus:
     """Get the sync status for the current user's DingTalk wikispace nodes."""
     status = DingTalkWikiSpaceService.get_sync_status(
-        current_user, db, wiki_space_type=wiki_space_type
+        current_user, db, wiki_space_type=source
     )
     return DingtalkSyncStatus(**status)

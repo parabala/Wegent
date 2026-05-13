@@ -145,7 +145,7 @@ class DingTalkDocService:
         that _sync_nodes_to_db can persist the correct parent_node_id.
 
         extra_tags: optional dict of key-value pairs to inject into every
-        returned node (e.g. wikiSpaceType for wikispace nodes).
+        returned node (e.g. _source for wikispace nodes).
         """
         if depth >= MAX_RECURSION_DEPTH:
             logger.warning(
@@ -179,7 +179,7 @@ class DingTalkDocService:
             for node in nodes_data:
                 if folder_id and not node.get("parentId"):
                     node["parentId"] = folder_id
-                # Inject extra tags (e.g. wikiSpaceType for wikispace nodes)
+                # Inject extra tags (e.g. _source for wikispace nodes)
                 if extra_tags:
                     for key, val in extra_tags.items():
                         if key not in node:
@@ -393,7 +393,6 @@ class DingTalkDocService:
             )
             workspace_id = node_data.get("workspaceId") or ""
             content_type = node_data.get("contentType") or ""
-            wiki_space_type = node_data.get("wikiSpaceType") or ""
             content_updated_at = DingTalkDocService._parse_update_time(
                 node_data.get("updateTime"), sync_time
             )
@@ -422,9 +421,6 @@ class DingTalkDocService:
                 if existing.content_type != content_type:
                     existing.content_type = content_type
                     changed = True
-                if existing.wiki_space_type != wiki_space_type:
-                    existing.wiki_space_type = wiki_space_type
-                    changed = True
                 if existing.content_updated_at != content_updated_at:
                     existing.content_updated_at = content_updated_at
                     changed = True
@@ -449,7 +445,6 @@ class DingTalkDocService:
                     node_type=node_type,
                     workspace_id=workspace_id,
                     content_type=content_type,
-                    wiki_space_type=wiki_space_type,
                     content_updated_at=content_updated_at,
                     is_active=True,
                     last_synced_at=sync_time,

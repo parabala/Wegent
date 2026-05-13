@@ -14,7 +14,6 @@ export interface DingtalkDocNode {
   parent_node_id: string
   node_type: 'folder' | 'doc' | 'file'
   workspace_id: string
-  wiki_space_type: string
   content_type: string
   content_updated_at: string
   is_active: boolean

@@ -111,13 +111,13 @@ export function DingtalkDocsPage({
   useEffect(() => {
     if (isWikispaceConfigured) {
       dingtalkDocApi
-        .getWikispaceSyncStatus('myWikiSpace')
+        .getWikispaceSyncStatus('mywikispace')
         .then(status =>
           setMyWikispace(prev => ({ ...prev, syncStatus: status }))
         )
         .catch(() => {})
       dingtalkDocApi
-        .getWikispaceSyncStatus('orgWikiSpace')
+        .getWikispaceSyncStatus('orgwikispace')
         .then(status =>
           setOrgWikispace(prev => ({ ...prev, syncStatus: status }))
         )
@@ -154,9 +154,9 @@ export function DingtalkDocsPage({
         if (tab === 'my-docs') {
           response = await dingtalkDocApi.getDocs()
         } else if (tab === 'my-wikispace') {
-          response = await dingtalkDocApi.getWikispaceNodes('myWikiSpace')
+          response = await dingtalkDocApi.getWikispaceNodes('mywikispace')
         } else {
-          response = await dingtalkDocApi.getWikispaceNodes('orgWikiSpace')
+          response = await dingtalkDocApi.getWikispaceNodes('orgwikispace')
         }
         setTabState(tab, prev => ({
           ...prev,
@@ -193,7 +193,7 @@ export function DingtalkDocsPage({
           // Sync wikispace (syncs both types at once)
           await dingtalkDocApi.syncWikispaceNodes()
           const wikiSpaceType =
-            tab === 'my-wikispace' ? 'myWikiSpace' : 'orgWikiSpace'
+            tab === 'my-wikispace' ? 'mywikispace' : 'orgwikispace'
           const updater =
             tab === 'my-wikispace' ? setMyWikispace : setOrgWikispace
           const [wsResponse, status] = await Promise.all([
