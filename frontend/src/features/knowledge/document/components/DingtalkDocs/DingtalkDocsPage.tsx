@@ -224,7 +224,7 @@ export function DingtalkDocsPage({
   }
 
   return (
-    <div className="flex flex-col h-full" data-testid="dingtalk-docs-page">
+    <div className="flex flex-col flex-1 min-h-0" data-testid="dingtalk-docs-page">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-border">
         <div className="flex items-center gap-3">
