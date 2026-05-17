@@ -464,7 +464,14 @@ docker compose up -d     # 启动
         <a href="https://github.com/ch15084">
             <img src="https://avatars.githubusercontent.com/u/2509224?v=4" width="80;" alt="ch15084"/>
             <br />
-            <sub><b>ch15084</b></sub>
+            <sub><b>Ch15084</b></sub>
+        </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/gdouyang">
+            <img src="https://avatars.githubusercontent.com/u/13996763?v=4" width="80;" alt="gdouyang"/>
+            <br />
+            <sub><b>gdouyang</b></sub>
         </a>
     </td>
     <td align="center">
