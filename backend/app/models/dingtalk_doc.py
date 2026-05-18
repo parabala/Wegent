@@ -7,7 +7,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, Index, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String
 from sqlalchemy.sql import func
 
 from app.db.base import Base
@@ -45,7 +45,7 @@ class DingtalkSyncedNode(Base):
     # DingTalk workspace (knowledge base) ID
     workspace_id = Column(String(64), nullable=False, default="")
     # Source of the node: 'docs' (personal documents) or 'wikispace' (knowledge base)
-    source = Column(Enum(DingTalkNodeSource), nullable=False, default=DingTalkNodeSource.DOCS)
+    source = Column(String(16), nullable=False, default=DingTalkNodeSource.DOCS.value)
     # Content type (e.g., ALIDOC)
     content_type = Column(String(32), nullable=False, default="")
     # Document content last updated time from list_nodes updateTime field
