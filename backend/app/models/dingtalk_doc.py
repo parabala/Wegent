@@ -15,6 +15,7 @@ from app.db.base import Base
 
 class DingTalkNodeSource(str, enum.Enum):
     """Source of a synced DingTalk node."""
+
     DOCS = "docs"
     WIKISPACE = "wikispace"
 
