@@ -48,8 +48,17 @@ from app.services.openapi.helpers import (
     parse_wegent_tools,
     wegent_status_to_openai_status,
 )
-from app.services.openapi.output_builder import build_response_output
+from app.services.openapi.output_builder import (
+    build_response_output,
+    extract_pending_user_input_state,
+)
 from app.services.readers.kinds import KindType, kindReader
+from shared.telemetry.decorators import (
+    add_span_event,
+    set_span_attribute,
+    trace_async,
+    trace_async_generator,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +92,9 @@ def _task_to_response_object(
     output = []
     if subtasks:
         output = build_response_output(subtasks)
+    pending_user_input, pending_user_input_payload = extract_pending_user_input_state(
+        _latest_assistant_subtask(subtasks or [])
+    )
 
     # Build error if failed
     error = None
@@ -97,6 +109,8 @@ def _task_to_response_object(
         error=error,
         model=model_string,
         output=output,
+        pending_user_input=pending_user_input or None,
+        pending_user_input_payload=pending_user_input_payload,
         previous_response_id=previous_response_id,
     )
 
@@ -106,6 +120,13 @@ def _filter_current_assistant_turn(
     assistant_subtask_id: int,
 ) -> list[Subtask]:
     return [subtask for subtask in subtasks if subtask.id == assistant_subtask_id]
+
+
+def _latest_assistant_subtask(subtasks: list[Subtask]) -> list[Subtask]:
+    for subtask in reversed(subtasks or []):
+        if subtask.role == SubtaskRole.ASSISTANT:
+            return [subtask]
+    return []
 
 
 async def _persist_terminal_failure(
@@ -133,6 +154,17 @@ async def _persist_terminal_failure(
 
 @router.post("")
 @limiter.limit(settings.RATE_LIMIT_CREATE_RESPONSE)
+@trace_async(
+    span_name="openapi.create_response",
+    tracer_name="backend.openapi",
+    extract_attributes=lambda request, request_body, db, auth_context: {
+        "user.id": str(auth_context.user.id),
+        "user.name": auth_context.user.user_name,
+        "request.model": request_body.model,
+        "request.stream": request_body.stream,
+        "request.background": request_body.background,
+    },
+)
 async def create_response(
     request: Request,
     request_body: ResponseCreateInput,
@@ -511,6 +543,9 @@ async def _create_non_streaming_response_unified(
             _query_subtasks(),
             assistant_subtask_id,
         )
+        pending_user_input, pending_user_input_payload = (
+            extract_pending_user_input_state(subtasks)
+        )
         return ResponseObject(
             id=response_id,
             created_at=created_at,
@@ -521,6 +556,8 @@ async def _create_non_streaming_response_unified(
                 active_assistant_subtask_id=assistant_subtask_id,
                 active_assistant_status="in_progress",
             ),
+            pending_user_input=pending_user_input or None,
+            pending_user_input_payload=pending_user_input_payload,
             previous_response_id=request_body.previous_response_id,
         )
 
@@ -554,6 +591,9 @@ async def _create_non_streaming_response_unified(
             _query_subtasks(),
             assistant_subtask_id,
         )
+        pending_user_input, pending_user_input_payload = (
+            extract_pending_user_input_state(subtasks)
+        )
         return ResponseObject(
             id=response_id,
             created_at=created_at,
@@ -564,6 +604,8 @@ async def _create_non_streaming_response_unified(
                 active_assistant_subtask_id=assistant_subtask_id,
                 active_assistant_status="in_progress",
             ),
+            pending_user_input=pending_user_input or None,
+            pending_user_input_payload=pending_user_input_payload,
             previous_response_id=request_body.previous_response_id,
         )
 
@@ -594,6 +636,9 @@ async def _create_non_streaming_response_unified(
         _query_subtasks(),
         assistant_subtask_id,
     )
+    pending_user_input, pending_user_input_payload = extract_pending_user_input_state(
+        subtasks
+    )
     return ResponseObject(
         id=response_id,
         created_at=created_at,
@@ -605,10 +650,24 @@ async def _create_non_streaming_response_unified(
             active_assistant_status="completed",
             active_assistant_content=accumulated_content,
         ),
+        pending_user_input=pending_user_input or None,
+        pending_user_input_payload=pending_user_input_payload,
         previous_response_id=request_body.previous_response_id,
     )
 
 
+@trace_async(
+    span_name="openapi.streaming_response",
+    tracer_name="backend.openapi",
+    extract_attributes=lambda db, user, team, model_info, request_body, input_text, tool_settings, task_id, api_key_name: {
+        "task.id": str(task_id) if task_id else "new",
+        "user.id": str(user.id),
+        "team.name": model_info.get("team_name"),
+        "team.namespace": model_info.get("namespace"),
+        "model.id": model_info.get("model_id", "default"),
+        "stream.enabled": True,
+    },
+)
 async def _create_streaming_response_unified(
     db: Session,
     user: User,
@@ -643,6 +702,19 @@ async def _create_streaming_response_unified(
         task_id,
         api_key_name,
     )
+
+    # Add trace events for session setup
+    add_span_event(
+        "streaming.session_setup",
+        {
+            "task_id": str(setup.task_id),
+            "assistant_subtask_id": str(setup.assistant_subtask.id),
+            "user_subtask_id": str(setup.user_subtask.id),
+        },
+    )
+    set_span_attribute("task.id", setup.task_id)
+    set_span_attribute("subtask.id", setup.assistant_subtask.id)
+    set_span_attribute("user.id", str(user.id))
 
     response_id = f"resp_{setup.task_id}"
     created_at = int(datetime.now().timestamp())
@@ -716,12 +788,21 @@ async def _create_streaming_response_unified(
             pass
         db.close()
 
+    @trace_async_generator(
+        span_name="openapi.raw_chat_stream",
+        tracer_name="backend.openapi",
+        extract_attributes=lambda: {
+            "task.id": str(task_kind_id),
+            "subtask.id": str(assistant_subtask_id),
+        },
+    )
     async def raw_chat_stream():
         """Generate raw text and reasoning chunks from ExecutionDispatcher."""
         import asyncio
 
         from app.services.execution.emitters import SSEResultEmitter
         from app.services.openapi.streaming import StreamingChunk
+        from shared.models import ExecutionEvent
 
         accumulated_content = ""
         accumulated_reasoning = ""
@@ -747,38 +828,112 @@ async def _create_streaming_response_unified(
                 return "shell_call"
             return "function_call"
 
+        emitter = None
+        dispatch_task = None
+        pubsub_redis_client = None
+        pubsub_obj = None
+
         try:
-            if not execution_dispatcher.supports_streaming(execution_request):
-                error_message = "Streaming not supported for this shell type"
-                await _persist_terminal_failure(
-                    subtask_id=assistant_subtask_id,
-                    task_id=task_kind_id,
-                    error_message=error_message,
-                    error_code="not_implemented",
-                )
-                raise NotImplementedError(error_message)
-
             cancel_event = await session_manager.register_stream(assistant_subtask_id)
-
-            # Create SSEResultEmitter for streaming
-            emitter = SSEResultEmitter(
-                task_id=execution_request.task_id,
-                subtask_id=execution_request.subtask_id,
+            add_span_event(
+                "sse.stream_registered",
+                {
+                    "subtask_id": str(assistant_subtask_id),
+                    "task_id": str(execution_request.task_id),
+                },
             )
 
-            # Start dispatch task (runs concurrently)
-            dispatch_task = asyncio.create_task(
-                execution_dispatcher.dispatch(execution_request, emitter=emitter)
+            is_sse = execution_dispatcher.supports_streaming(execution_request)
+            add_span_event(
+                "sse.mode_determined",
+                {
+                    "is_sse_mode": is_sse,
+                    "shell_type": (
+                        execution_request.bot[0].get("shell_type", "Chat")
+                        if execution_request.bot
+                        else "Chat"
+                    ),
+                },
             )
 
-            # Stream events from emitter
+            if is_sse:
+                # SSE mode (Chat shell): stream directly via OpenAI client
+                emitter = SSEResultEmitter(
+                    task_id=execution_request.task_id,
+                    subtask_id=execution_request.subtask_id,
+                )
+                dispatch_task = asyncio.create_task(
+                    execution_dispatcher.dispatch(execution_request, emitter=emitter)
+                )
+            else:
+                # HTTP+Callback mode (ClaudeCode/Agno/Dify): subscribe to Redis
+                # pub/sub channel; the /internal/callback handler publishes events
+                pubsub_redis_client, pubsub_obj = (
+                    await session_manager.subscribe_callback_channel(
+                        assistant_subtask_id
+                    )
+                )
+                if pubsub_redis_client is None:
+                    raise RuntimeError("Failed to subscribe to callback stream channel")
+                # Fire-and-forget; executor sends events back via /internal/callback
+                asyncio.create_task(
+                    execution_dispatcher.dispatch(execution_request, emitter=None)
+                )
+
+            async def _iter_events():
+                """Yield ExecutionEvents from either SSE emitter or callback pub/sub."""
+                if is_sse:
+                    async for ev in emitter.stream():
+                        yield ev
+                else:
+                    # Poll the pub/sub channel; 1s timeout keeps cancellation responsive
+                    max_wait_until = asyncio.get_event_loop().time() + 600
+                    while asyncio.get_event_loop().time() < max_wait_until:
+                        if cancel_event.is_set():
+                            return
+                        message = await pubsub_obj.get_message(
+                            ignore_subscribe_messages=True, timeout=1.0
+                        )
+                        if message is None:
+                            continue
+                        if message.get("type") != "message":
+                            continue
+                        data = message["data"]
+                        if isinstance(data, bytes):
+                            data = data.decode("utf-8")
+                        event = ExecutionEvent.from_dict(json.loads(data))
+                        yield event
+                        if event.type in (
+                            EventType.DONE.value,
+                            EventType.ERROR.value,
+                            EventType.CANCELLED.value,
+                        ):
+                            return
+
+            # Stream events from the unified source
+            event_count = 0
             try:
-                async for event in emitter.stream():
+                add_span_event(
+                    "sse.event_iteration_start",
+                    {
+                        "subtask_id": str(assistant_subtask_id),
+                        "is_sse_mode": is_sse,
+                    },
+                )
+                async for event in _iter_events():
+                    event_count += 1
                     if cancel_event.is_set() or await session_manager.is_cancelled(
                         assistant_subtask_id
                     ):
                         logger.info(
                             f"Stream cancelled for subtask {assistant_subtask_id}"
+                        )
+                        add_span_event(
+                            "sse.stream_cancelled",
+                            {
+                                "subtask_id": str(assistant_subtask_id),
+                                "events_processed": event_count,
+                            },
                         )
                         break
 
@@ -809,7 +964,9 @@ async def _create_streaming_response_unified(
                             event.tool_name,
                         )
                         tool_name = event.tool_name or ""
-                        tool_input = event.tool_input or {}
+                        tool_input = (
+                            event.tool_input if event.tool_input is not None else {}
+                        )
                         tool_state = {
                             "protocol": tool_protocol,
                             "name": tool_name,
@@ -848,7 +1005,7 @@ async def _create_streaming_response_unified(
                                     "name": tool_name,
                                     "arguments": (
                                         json.dumps(tool_input, ensure_ascii=False)
-                                        if tool_input
+                                        if tool_input is not None
                                         else ""
                                     ),
                                     "output_index": tool_state["output_index"],
@@ -862,7 +1019,9 @@ async def _create_streaming_response_unified(
                         if not tool_state:
                             continue
                         if tool_state.get("protocol") == "mcp_call":
-                            tool_state["arguments"] = event.tool_input or {}
+                            tool_state["arguments"] = (
+                                event.tool_input if event.tool_input is not None else {}
+                            )
                     elif event.type == EventType.ERROR.value:
                         error_msg = event.error or "Unknown error"
                         logger.error(f"[OPENAPI] Error from execution: {error_msg}")
@@ -883,7 +1042,11 @@ async def _create_streaming_response_unified(
                                     event.tool_name,
                                 ),
                                 "name": event.tool_name or "",
-                                "arguments": event.tool_input or {},
+                                "arguments": (
+                                    event.tool_input
+                                    if event.tool_input is not None
+                                    else {}
+                                ),
                                 "output_index": allocate_output_index(),
                             }
                             if event.data and event.data.get("server_label"):
@@ -897,7 +1060,9 @@ async def _create_streaming_response_unified(
                         )
                         tool_name = tool_state.get("name") or event.tool_name or ""
                         arguments = (
-                            event.tool_input or tool_state.get("arguments") or {}
+                            event.tool_input
+                            if event.tool_input is not None
+                            else tool_state.get("arguments") or {}
                         )
                         output_index = tool_state["output_index"]
 
@@ -914,6 +1079,7 @@ async def _create_streaming_response_unified(
                                         else ""
                                     ),
                                     "output_index": output_index,
+                                    "output": event.tool_output,
                                     "status": (
                                         "failed"
                                         if event.data
@@ -956,16 +1122,31 @@ async def _create_streaming_response_unified(
                                     "output_index": output_index,
                                 },
                             )
-                    elif event.type == EventType.DONE.value:
+                    if event.type == EventType.DONE.value:
                         logger.info(
                             f"[OPENAPI] Stream completed for subtask {assistant_subtask_id}"
                         )
+                        add_span_event(
+                            "sse.terminal_event",
+                            {
+                                "event_type": "DONE",
+                                "total_events": event_count,
+                            },
+                        )
+                add_span_event(
+                    "sse.event_iteration_complete",
+                    {
+                        "subtask_id": str(assistant_subtask_id),
+                        "total_events": event_count,
+                    },
+                )
             finally:
-                # Wait for dispatch task to complete
-                try:
-                    await dispatch_task
-                except Exception:
-                    pass  # Error already handled via emitter
+                # Wait for SSE dispatch task to complete
+                if dispatch_task is not None:
+                    try:
+                        await dispatch_task
+                    except Exception:
+                        pass  # Error already handled via emitter
 
         except NotImplementedError as e:
             # Streaming not supported for this shell type
@@ -975,10 +1156,29 @@ async def _create_streaming_response_unified(
             logger.exception(f"Error in streaming: {e}")
             raise
         finally:
+            if pubsub_obj is not None:
+                try:
+                    await pubsub_obj.unsubscribe()
+                except Exception:
+                    pass
+            if pubsub_redis_client is not None:
+                try:
+                    await pubsub_redis_client.aclose()
+                except Exception:
+                    pass
             await session_manager.unregister_stream(assistant_subtask_id)
             await session_manager.delete_streaming_content(assistant_subtask_id)
 
     async def generate():
+        event_count = 0
+        add_span_event(
+            "sse.generate_start",
+            {
+                "response_id": response_id,
+                "task_id": str(task_kind_id),
+                "subtask_id": str(assistant_subtask_id),
+            },
+        )
         try:
             async for event in streaming_service.create_streaming_response(
                 response_id=response_id,
@@ -988,16 +1188,39 @@ async def _create_streaming_response_unified(
                 previous_response_id=request_body.previous_response_id,
                 task_context=(
                     {
-                        "task_id": setup.task_id,
-                        "task_path": f"/chat?task_id={setup.task_id}",
+                        "task_id": task_kind_id,
+                        "task_path": f"/chat?task_id={task_kind_id}",
                     }
                     if request_body.wegent_options
                     and request_body.wegent_options.include_task_context
                     else None
                 ),
             ):
+                event_count += 1
+                # Log every 100 events and first 5 events
+                if event_count <= 5 or event_count % 100 == 0:
+                    add_span_event(
+                        "sse.event_yielded",
+                        {
+                            "event_number": event_count,
+                            "response_id": response_id,
+                        },
+                    )
                 yield event
+            add_span_event(
+                "sse.generate_complete",
+                {
+                    "total_events_sent": event_count,
+                    "response_id": response_id,
+                },
+            )
         except NotImplementedError as e:
+            add_span_event(
+                "sse.generate_not_implemented",
+                {
+                    "error": str(e),
+                },
+            )
             # Return error in SSE format
             import json
 

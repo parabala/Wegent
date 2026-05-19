@@ -6,6 +6,7 @@
 API integration tests for OpenAPI v1/responses endpoints.
 """
 
+import asyncio
 import json
 from datetime import datetime
 from types import SimpleNamespace
@@ -15,7 +16,11 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.api.endpoints.openapi_responses import _filter_current_assistant_turn
+from app.api.endpoints.openapi_responses import (
+    _create_non_streaming_response_unified,
+    _filter_current_assistant_turn,
+    _task_to_response_object,
+)
 from app.models.kind import Kind
 from app.models.subtask import SenderType, Subtask, SubtaskRole, SubtaskStatus
 from app.models.task import TaskResource
@@ -249,6 +254,59 @@ def test_subtasks(
     return [user_subtask, assistant_subtask]
 
 
+def _assistant_subtask_with_pending_form(
+    *,
+    subtask_id: int,
+    task_id: int,
+    user_id: int,
+    team_id: int,
+    ask_id: str,
+) -> Subtask:
+    return Subtask(
+        id=subtask_id,
+        user_id=user_id,
+        task_id=task_id,
+        team_id=team_id,
+        title="Assistant response",
+        bot_ids=[1],
+        role=SubtaskRole.ASSISTANT,
+        executor_namespace="",
+        executor_name="",
+        prompt="",
+        status=SubtaskStatus.COMPLETED,
+        progress=100,
+        message_id=2,
+        parent_id=1,
+        error_message="",
+        completed_at=datetime.now(),
+        result={
+            "blocks": [
+                {
+                    "id": f"call_mcp_{subtask_id}",
+                    "type": "tool",
+                    "tool_use_id": f"call_mcp_{subtask_id}",
+                    "tool_name": "interactive_form_question",
+                    "tool_input": {"ask_id": ask_id},
+                    "tool_output": {
+                        "pending_user_input": True,
+                        "pending_user_input_payload": {
+                            "type": "interactive_form_question",
+                            "ask_id": ask_id,
+                            "submit_mode": "new_response",
+                            "submit_format": "markdown_message",
+                        },
+                    },
+                    "tool_protocol": "mcp_call",
+                    "server_label": "interactive-form",
+                    "status": "done",
+                }
+            ]
+        },
+        sender_type=SenderType.TEAM,
+        sender_user_id=0,
+    )
+
+
 @pytest.mark.api
 class TestOpenAPIResponsesCreate:
     """Test POST /api/v1/responses endpoint."""
@@ -282,15 +340,33 @@ class TestOpenAPIResponsesCreate:
     def test_create_response_invalid_previous_response_id_format(
         self, test_client: TestClient, test_api_key, test_team: Kind, test_bot: Kind
     ):
-        """Test create response with invalid previous_response_id format that doesn't start with resp_.
+        """Document current behavior for previous_response_id without resp_ prefix."""
+        from app.schemas.openapi_response import ResponseObject
 
-        Note: Current endpoint behavior doesn't validate this case - it only validates
-        if the format starts with 'resp_' but has invalid number. This test documents
-        the current behavior (endpoint ignores invalid format that doesn't start with resp_).
-        """
-        # This test is removed since the endpoint doesn't validate this case
-        # The endpoint only checks if format starts with "resp_" and then validates the number
-        pass
+        mock_response = ResponseObject(
+            id="resp_123",
+            created_at=int(datetime.now().timestamp()),
+            status="completed",
+            model="default#test-team",
+            output=[],
+        )
+
+        with patch(
+            "app.api.endpoints.openapi_responses._create_non_streaming_response_unified",
+            return_value=mock_response,
+        ) as mock_create_sync:
+            response = test_client.post(
+                "/api/v1/responses",
+                headers={"X-API-Key": test_api_key[0]},
+                json={
+                    "model": "default#test-team",
+                    "input": "Hello",
+                    "previous_response_id": "not-a-resp-id",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_create_sync.assert_called_once()
 
     def test_create_response_invalid_previous_response_id_number(
         self, test_client: TestClient, test_api_key, test_team: Kind, test_bot: Kind
@@ -394,6 +470,81 @@ class TestOpenAPIResponsesCreate:
         assert data["status"] == "completed"
         assert len(data["output"]) == 1
 
+    @pytest.mark.asyncio
+    async def test_create_non_streaming_response_unified_sets_pending_user_input(
+        self,
+        test_db: Session,
+        test_user: User,
+        test_team: Kind,
+    ):
+        """Queued non-streaming responses should expose pending interactive form state."""
+        setup = SimpleNamespace(
+            task=SimpleNamespace(id=101, json={"metadata": {"labels": {}}}),
+            task_id=101,
+            user_subtask=SimpleNamespace(id=321),
+            assistant_subtask=SimpleNamespace(id=654),
+        )
+        execution_request = SimpleNamespace(task_id=101, subtask_id=654)
+        assistant_subtask = _assistant_subtask_with_pending_form(
+            subtask_id=654,
+            task_id=101,
+            user_id=test_user.id,
+            team_id=test_team.id,
+            ask_id="ask_654",
+        )
+        query_db = MagicMock()
+        query_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            assistant_subtask
+        ]
+
+        with (
+            patch(
+                "app.services.openapi.chat_session.setup_chat_session",
+                return_value=setup,
+            ),
+            patch(
+                "app.services.chat.trigger.unified.build_execution_request",
+                new=AsyncMock(return_value=execution_request),
+            ),
+            patch(
+                "app.services.execution.execution_dispatcher.supports_streaming",
+                return_value=False,
+            ),
+            patch(
+                "app.services.execution.execution_dispatcher.dispatch",
+                new=AsyncMock(),
+            ),
+            patch(
+                "app.db.session.SessionLocal",
+                return_value=query_db,
+            ),
+        ):
+            response = await _create_non_streaming_response_unified(
+                db=test_db,
+                user=test_user,
+                team=test_team,
+                model_info={"namespace": "default", "team_name": "test-team"},
+                request_body=SimpleNamespace(
+                    model="default#test-team",
+                    input="hello",
+                    previous_response_id=None,
+                    stream=False,
+                    tools=None,
+                    background=False,
+                    reasoning=None,
+                    attachment_ids=None,
+                    wegent_options=None,
+                ),
+                input_text="hello",
+                tool_settings={},
+            )
+
+        assert response.status == "queued"
+        assert response.pending_user_input is True
+        assert response.pending_user_input_payload["ask_id"] == "ask_654"
+        assert response.output[0].type == "mcp_call"
+        assert response.output[0].output["pending_user_input"] is True
+
     def test_filter_current_assistant_turn_only_returns_active_subtask(
         self,
         test_subtasks: list,
@@ -472,7 +623,8 @@ class TestOpenAPIResponsesCreate:
         test_user: User,
         test_team: Kind,
     ):
-        """Unsupported shells should fail inside SSE generation, not via HTTP error."""
+        """Non-SSE shells use callback streaming via Redis. When Redis subscribe
+        fails, the stream should return a response.failed event."""
         from app.api.endpoints.openapi_responses import (
             _create_streaming_response_unified,
         )
@@ -500,13 +652,29 @@ class TestOpenAPIResponsesCreate:
                 return_value=False,
             ),
             patch(
+                "app.services.chat.storage.session_manager.register_stream",
+                new=AsyncMock(return_value=asyncio.Event()),
+            ),
+            patch(
+                "app.services.chat.storage.session_manager.subscribe_callback_channel",
+                new=AsyncMock(return_value=(None, None)),
+            ),
+            patch(
+                "app.services.chat.storage.session_manager.unregister_stream",
+                new=AsyncMock(),
+            ),
+            patch(
+                "app.services.chat.storage.session_manager.delete_streaming_content",
+                new=AsyncMock(),
+            ),
+            patch(
                 "app.api.endpoints.openapi_responses.collect_completed_result",
                 new=AsyncMock(return_value={"value": ""}),
-            ) as mock_collect_result,
+            ),
             patch(
                 "app.api.endpoints.openapi_responses.persist_completed_result",
                 new=AsyncMock(),
-            ) as mock_persist_result,
+            ),
         ):
             response = await _create_streaming_response_unified(
                 db=test_db,
@@ -537,20 +705,7 @@ class TestOpenAPIResponsesCreate:
             event for event in events if event["type"] == "response.failed"
         )
         assert failed_event["response"]["status"] == "failed"
-        assert failed_event["response"]["error"]["code"] == "not_implemented"
-        mock_collect_result.assert_awaited_once_with(
-            654,
-            status="FAILED",
-            error_message="Streaming not supported for this shell type",
-            error_code="not_implemented",
-        )
-        mock_persist_result.assert_awaited_once_with(
-            subtask_id=654,
-            task_id=101,
-            status="FAILED",
-            result={"value": ""},
-            error="Streaming not supported for this shell type",
-        )
+        assert failed_event["response"]["error"]["code"] == "stream_error"
 
     def test_create_response_with_wegent_tools(
         self, test_client: TestClient, test_api_key
@@ -882,6 +1037,171 @@ class TestOpenAPIResponsesGet:
         assert len(data["output"]) == 1
         assert data["output"][0]["type"] == "message"
         assert data["output"][0]["role"] == "assistant"
+
+    def test_task_to_response_object_sets_pending_user_input_from_subtasks(
+        self,
+        test_user: User,
+        test_team: Kind,
+    ):
+        """GET /v1/responses/{id} should expose pending interactive form state."""
+        task_dict = {
+            "id": 42,
+            "status": "COMPLETED",
+            "created_at": datetime.now(),
+        }
+        assistant_subtask = _assistant_subtask_with_pending_form(
+            subtask_id=204,
+            task_id=42,
+            user_id=test_user.id,
+            team_id=test_team.id,
+            ask_id="ask_204",
+        )
+
+        response = _task_to_response_object(
+            task_dict,
+            "default#test-team",
+            subtasks=[assistant_subtask],
+        )
+
+        assert response.status == "completed"
+        assert response.pending_user_input is True
+        assert response.pending_user_input_payload["ask_id"] == "ask_204"
+        assert response.output[0].type == "mcp_call"
+        assert response.output[0].output["pending_user_input"] is True
+
+    def test_get_response_exposes_pending_user_input(
+        self,
+        test_client: TestClient,
+        test_api_key,
+        test_db: Session,
+        test_user: User,
+        test_team: Kind,
+        test_task: TaskResource,
+    ):
+        """GET endpoint should serialize pending interactive form state."""
+        assistant_subtask = _assistant_subtask_with_pending_form(
+            subtask_id=304,
+            task_id=test_task.id,
+            user_id=test_user.id,
+            team_id=test_team.id,
+            ask_id="ask_304",
+        )
+        assistant_subtask.message_id = 1
+        test_db.add(assistant_subtask)
+        test_db.commit()
+
+        response = test_client.get(
+            f"/api/v1/responses/resp_{test_task.id}",
+            headers={"X-API-Key": test_api_key[0]},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["pending_user_input"] is True
+        assert data["pending_user_input_payload"]["ask_id"] == "ask_304"
+        assert data["output"][0]["type"] == "mcp_call"
+        assert data["output"][0]["output"]["pending_user_input"] is True
+
+    def test_task_to_response_object_ignores_stale_pending_state_from_earlier_turn(
+        self,
+        test_user: User,
+        test_team: Kind,
+    ):
+        """GET reconstruction should only inspect the latest assistant turn for pending state."""
+        task_dict = {
+            "id": 43,
+            "status": "COMPLETED",
+            "created_at": datetime.now(),
+        }
+        stale_assistant = _assistant_subtask_with_pending_form(
+            subtask_id=205,
+            task_id=43,
+            user_id=test_user.id,
+            team_id=test_team.id,
+            ask_id="ask_205",
+        )
+        current_assistant = Subtask(
+            user_id=test_user.id,
+            task_id=43,
+            team_id=test_team.id,
+            title="Assistant response",
+            bot_ids=[1],
+            role=SubtaskRole.ASSISTANT,
+            executor_namespace="",
+            executor_name="",
+            prompt="",
+            status=SubtaskStatus.COMPLETED,
+            progress=100,
+            message_id=3,
+            parent_id=1,
+            error_message="",
+            completed_at=datetime.now(),
+            result={"value": "done"},
+            sender_type=SenderType.TEAM,
+            sender_user_id=0,
+        )
+
+        response = _task_to_response_object(
+            task_dict,
+            "default#test-team",
+            subtasks=[stale_assistant, current_assistant],
+        )
+
+        assert response.status == "completed"
+        assert response.pending_user_input is None
+        assert response.pending_user_input_payload is None
+
+    def test_get_response_ignores_stale_pending_state_from_earlier_turn(
+        self,
+        test_client: TestClient,
+        test_api_key,
+        test_db: Session,
+        test_user: User,
+        test_team: Kind,
+        test_task: TaskResource,
+    ):
+        """GET endpoint should compute top-level pending state from the latest assistant turn only."""
+        stale_assistant = _assistant_subtask_with_pending_form(
+            subtask_id=305,
+            task_id=test_task.id,
+            user_id=test_user.id,
+            team_id=test_team.id,
+            ask_id="ask_305",
+        )
+        stale_assistant.message_id = 1
+        current_assistant = Subtask(
+            user_id=test_user.id,
+            task_id=test_task.id,
+            team_id=test_team.id,
+            title="Assistant response",
+            bot_ids=[1],
+            role=SubtaskRole.ASSISTANT,
+            executor_namespace="",
+            executor_name="",
+            prompt="",
+            status=SubtaskStatus.COMPLETED,
+            progress=100,
+            message_id=2,
+            parent_id=1,
+            error_message="",
+            completed_at=datetime.now(),
+            result={"value": "done"},
+            sender_type=SenderType.TEAM,
+            sender_user_id=0,
+        )
+        test_db.add(stale_assistant)
+        test_db.add(current_assistant)
+        test_db.commit()
+
+        response = test_client.get(
+            f"/api/v1/responses/resp_{test_task.id}",
+            headers={"X-API-Key": test_api_key[0]},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["pending_user_input"] is None
+        assert data["pending_user_input_payload"] is None
 
     def test_get_response_user_isolation(
         self,

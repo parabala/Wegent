@@ -21,6 +21,12 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, List, Optional
 
+from shared.telemetry.decorators import (
+    add_span_event,
+    set_span_attribute,
+    trace_async,
+)
+
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
 
@@ -206,6 +212,18 @@ class ResponsesAPIEventParser:
                 message_id=message_id,
             )
 
+        elif event_type == ResponsesAPIStreamEvents.BLOCK_CREATED.value:
+            block = data.get("block")
+            if not isinstance(block, dict):
+                return None
+            return ExecutionEvent(
+                type=EventType.BLOCK_CREATED,
+                task_id=task_id,
+                subtask_id=subtask_id,
+                data={"block": block},
+                message_id=message_id,
+            )
+
         elif event_type == ResponsesAPIStreamEvents.ERROR.value:
             # error -> ERROR
             self._clear_task_contexts(task_id, subtask_id)
@@ -229,20 +247,47 @@ class ResponsesAPIEventParser:
             )
 
         elif event_type == ResponsesAPIStreamEvents.FUNCTION_CALL_ARGUMENTS_DELTA.value:
-            # function_call_arguments.delta -> incremental arguments update
-            # Standard OpenAI protocol: this event only contains delta, no status field
-            # Tool start is signaled by response.output_item.added with type=function_call
-            # We skip this event as it's just incremental argument streaming
-            return None
+            tool_use_id = _require_non_empty_tool_use_id(
+                data.get("call_id") or data.get("item_id"),
+                context="function_call_arguments.delta",
+            )
+            tool_key = self._tool_key(task_id, subtask_id, tool_use_id)
+            tool_context = self._tool_contexts.get(tool_key)
+            if tool_context is None:
+                logger.warning(
+                    "[ResponsesAPIEventParser] Missing function_call context for %s during arguments.delta",
+                    tool_key,
+                )
+                tool_context = {}
+            arguments_summary = data.get("arguments_summary")
+            if isinstance(arguments_summary, dict):
+                tool_context["arguments"] = arguments_summary
+            return ExecutionEvent(
+                type=EventType.TOOL_ARGUMENT_DELTA,
+                task_id=task_id,
+                subtask_id=subtask_id,
+                tool_name=tool_context.get("name"),
+                tool_use_id=tool_use_id,
+                tool_input=(
+                    arguments_summary if isinstance(arguments_summary, dict) else None
+                ),
+                data={
+                    "tool_protocol": "function_call",
+                    "argument_status": "streaming",
+                    "delta": data.get("delta", ""),
+                },
+                message_id=message_id,
+            )
 
         elif event_type == ResponsesAPIStreamEvents.FUNCTION_CALL_ARGUMENTS_DONE.value:
-            # function_call_arguments.done -> TOOL_RESULT
+            # function_call_arguments.done marks argument generation complete.
+            # The execution result is emitted by response.output_item.done.
             tool_use_id = _require_non_empty_tool_use_id(
                 data.get("call_id") or data.get("item_id"),
                 context="function_call_arguments.done",
             )
             tool_key = self._tool_key(task_id, subtask_id, tool_use_id)
-            tool_context = self._tool_contexts.pop(tool_key, None)
+            tool_context = self._tool_contexts.get(tool_key)
             if tool_context is None:
                 logger.warning(
                     "[ResponsesAPIEventParser] Missing function_call context for %s; "
@@ -252,23 +297,29 @@ class ResponsesAPIEventParser:
                 tool_context = {}
             # Parse arguments from the event data to get tool_input
             arguments_str = data.get("arguments", "")
-            tool_input = None
-            if arguments_str:
+            tool_input = data.get("arguments_summary")
+            if not isinstance(tool_input, dict) and arguments_str:
                 try:
                     tool_input = json.loads(arguments_str)
                 except (json.JSONDecodeError, TypeError):
                     pass
+            if isinstance(tool_input, dict):
+                tool_context["arguments"] = tool_input
             return ExecutionEvent(
-                type=EventType.TOOL_RESULT,
+                type=EventType.TOOL_ARGUMENT_DONE,
                 task_id=task_id,
                 subtask_id=subtask_id,
                 tool_name=tool_context.get("name"),
                 tool_use_id=tool_use_id,
-                tool_input=tool_input or tool_context.get("arguments"),
-                tool_output=data.get("output"),
+                tool_input=(
+                    tool_input
+                    if tool_input is not None
+                    else tool_context.get("arguments")
+                ),
                 data={
                     "blocks": data.get("blocks", []),
                     "tool_protocol": "function_call",
+                    "argument_status": "done",
                 },
                 message_id=message_id,
             )
@@ -306,10 +357,15 @@ class ResponsesAPIEventParser:
                     except (json.JSONDecodeError, TypeError):
                         pass
                 tool_key = self._tool_key(task_id, subtask_id, call_id)
+                arguments_summary = data.get("arguments_summary")
                 self._tool_contexts[tool_key] = {
                     "protocol": "function_call",
                     "name": name,
-                    "arguments": arguments,
+                    "arguments": (
+                        arguments_summary
+                        if isinstance(arguments_summary, dict)
+                        else arguments
+                    ),
                 }
 
                 return ExecutionEvent(
@@ -318,11 +374,16 @@ class ResponsesAPIEventParser:
                     subtask_id=subtask_id,
                     tool_use_id=call_id,
                     tool_name=name,
-                    tool_input=arguments,
+                    tool_input=(
+                        arguments_summary
+                        if isinstance(arguments_summary, dict)
+                        else arguments
+                    ),
                     data={
                         "blocks": data.get("blocks", []),
                         "display_name": data.get("display_name"),
                         "tool_protocol": "function_call",
+                        "argument_status": data.get("argument_status"),
                     },
                     message_id=message_id,
                 )
@@ -459,6 +520,43 @@ class ResponsesAPIEventParser:
 
         elif event_type == ResponsesAPIStreamEvents.OUTPUT_ITEM_DONE.value:
             item = data.get("item", {})
+            if item.get("type") == "function_call":
+                call_id = _require_non_empty_tool_use_id(
+                    item.get("call_id") or item.get("id"),
+                    context="response.output_item.done(function_call)",
+                )
+                tool_key = self._tool_key(task_id, subtask_id, call_id)
+                tool_context = self._tool_contexts.pop(tool_key, None)
+                if tool_context is None:
+                    logger.warning(
+                        "[ResponsesAPIEventParser] Missing function_call completion context for %s; "
+                        "continuing with self-contained completion payload",
+                        tool_key,
+                    )
+                    tool_context = {}
+                arguments_str = item.get("arguments", "")
+                tool_input = tool_context.get("arguments")
+                if not isinstance(tool_input, dict) and arguments_str:
+                    try:
+                        tool_input = json.loads(arguments_str)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                status = item.get("status", "completed")
+                return ExecutionEvent(
+                    type=EventType.TOOL_RESULT,
+                    task_id=task_id,
+                    subtask_id=subtask_id,
+                    tool_name=tool_context.get("name") or item.get("name"),
+                    tool_use_id=call_id,
+                    tool_input=tool_input,
+                    tool_output=item.get("output"),
+                    data={
+                        "tool_protocol": "function_call",
+                        "status": status,
+                        "error": item.get("error"),
+                    },
+                    message_id=message_id,
+                )
             if item.get("type") != "shell_call":
                 return None
             call_id = _require_non_empty_tool_use_id(
@@ -474,8 +572,9 @@ class ResponsesAPIEventParser:
                     tool_key,
                 )
                 tool_context = {}
-            tool_input = _extract_shell_call_input(item) or tool_context.get(
-                "arguments"
+            extracted = _extract_shell_call_input(item)
+            tool_input = (
+                extracted if extracted is not None else tool_context.get("arguments")
             )
             return ExecutionEvent(
                 type=EventType.TOOL_RESULT,
@@ -888,6 +987,16 @@ class ExecutionDispatcher:
 
         await self.dispatch(request, device_id, emitter)
 
+    @trace_async(
+        span_name="dispatcher.dispatch_sse",
+        tracer_name="backend.execution",
+        extract_attributes=lambda self, request, target, emitter: {
+            "task.id": str(request.task_id),
+            "subtask.id": str(request.subtask_id),
+            "target.url": target.url,
+            "shell.type": self._get_shell_type(request),
+        },
+    )
     async def _dispatch_sse(
         self,
         request: ExecutionRequest,
@@ -977,6 +1086,15 @@ class ExecutionDispatcher:
             f"[ExecutionDispatcher] About to call client.responses.create: "
             f"task_id={request.task_id}, subtask_id={request.subtask_id}"
         )
+        add_span_event(
+            "sse.openai_request_start",
+            {
+                "model": openai_request.get("model"),
+                "base_url": base_url,
+                "tools_count": len(tools),
+                "request_id": request_id,
+            },
+        )
         # Use async with to ensure stream is properly closed on exit.
         # Without this, breaking out of the stream loop leaves the underlying
         # httpx Response open. When GC eventually collects it, httpcore's
@@ -1001,6 +1119,14 @@ class ExecutionDispatcher:
                 f"[ExecutionDispatcher] Stream created, starting to iterate events: "
                 f"task_id={request.task_id}, subtask_id={request.subtask_id}"
             )
+            add_span_event(
+                "sse.openai_stream_created",
+                {
+                    "task_id": str(request.task_id),
+                    "subtask_id": str(request.subtask_id),
+                    "request_id": request_id,
+                },
+            )
 
             event_count = 0
             last_cancel_check = 0
@@ -1009,6 +1135,13 @@ class ExecutionDispatcher:
 
             try:
                 # Process streaming events
+                add_span_event(
+                    "sse.openai_event_iteration_start",
+                    {
+                        "task_id": str(request.task_id),
+                        "subtask_id": str(request.subtask_id),
+                    },
+                )
                 async for event in stream:
                     event_count += 1
 
@@ -1047,6 +1180,16 @@ class ExecutionDispatcher:
                         logger.info(
                             f"[ExecutionDispatcher] SSE event #{event_count}: type={event_type}, "
                             f"task_id={request.task_id}, subtask_id={request.subtask_id}"
+                        )
+                        # Add trace event for first few events and terminal events
+                        add_span_event(
+                            "sse.openai_event_received",
+                            {
+                                "event_type": event_type,
+                                "event_number": event_count,
+                                "task_id": str(request.task_id),
+                                "subtask_id": str(request.subtask_id),
+                            },
                         )
 
                     # Convert event to dict for parsing
@@ -1091,6 +1234,15 @@ class ExecutionDispatcher:
                             f"task_id={request.task_id}, subtask_id={request.subtask_id}, "
                             f"event_type={event_type}, request_id={request_id}"
                         )
+                        add_span_event(
+                            "sse.openai_terminal_event",
+                            {
+                                "event_type": event_type,
+                                "total_events": event_count,
+                                "task_id": str(request.task_id),
+                                "subtask_id": str(request.subtask_id),
+                            },
+                        )
                         break
 
                 # If cancelled, emit CANCELLED event
@@ -1113,6 +1265,15 @@ class ExecutionDispatcher:
                         request_id,
                         event_count,
                     )
+                    add_span_event(
+                        "sse.openai_stream_no_terminal",
+                        {
+                            "warning": True,
+                            "total_events": event_count,
+                            "task_id": str(request.task_id),
+                            "subtask_id": str(request.subtask_id),
+                        },
+                    )
 
                 # Log when stream iteration completes
                 logger.info(
@@ -1121,9 +1282,26 @@ class ExecutionDispatcher:
                     f"total_events={event_count}, cancelled={cancelled}, "
                     f"terminal_event_type={terminal_event_type or 'none'}, request_id={request_id}"
                 )
+                add_span_event(
+                    "sse.openai_event_iteration_complete",
+                    {
+                        "total_events": event_count,
+                        "cancelled": cancelled,
+                        "terminal_event_type": terminal_event_type or "none",
+                        "task_id": str(request.task_id),
+                        "subtask_id": str(request.subtask_id),
+                    },
+                )
             finally:
                 # Unregister stream to clean up
                 await session_manager.unregister_stream(request.subtask_id)
+                add_span_event(
+                    "sse.stream_unregistered",
+                    {
+                        "task_id": str(request.task_id),
+                        "subtask_id": str(request.subtask_id),
+                    },
+                )
 
     async def _dispatch_image_generation(
         self,
