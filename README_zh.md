@@ -275,17 +275,17 @@ docker compose up -d     # 启动
         </a>
     </td>
     <td align="center">
-        <a href="https://github.com/johnny0120">
-            <img src="https://avatars.githubusercontent.com/u/15564476?v=4" width="80;" alt="johnny0120"/>
-            <br />
-            <sub><b>Johnny0120</b></sub>
-        </a>
-    </td>
-    <td align="center">
         <a href="https://github.com/parabala">
             <img src="https://avatars.githubusercontent.com/u/115564000?v=4" width="80;" alt="parabala"/>
             <br />
             <sub><b>Parabala</b></sub>
+        </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/johnny0120">
+            <img src="https://avatars.githubusercontent.com/u/15564476?v=4" width="80;" alt="johnny0120"/>
+            <br />
+            <sub><b>Johnny0120</b></sub>
         </a>
     </td></tr>
 <tr>
@@ -339,18 +339,18 @@ docker compose up -d     # 启动
         </a>
     </td>
     <td align="center">
-        <a href="https://github.com/kerwin612">
-            <img src="https://avatars.githubusercontent.com/u/3371163?v=4" width="80;" alt="kerwin612"/>
-            <br />
-            <sub><b>Kerwin Bryant</b></sub>
-        </a>
-    </td></tr>
-<tr>
-    <td align="center">
         <a href="https://github.com/cocowh">
             <img src="https://avatars.githubusercontent.com/u/17496282?v=4" width="80;" alt="cocowh"/>
             <br />
             <sub><b>Birch</b></sub>
+        </a>
+    </td></tr>
+<tr>
+    <td align="center">
+        <a href="https://github.com/kerwin612">
+            <img src="https://avatars.githubusercontent.com/u/3371163?v=4" width="80;" alt="kerwin612"/>
+            <br />
+            <sub><b>Kerwin Bryant</b></sub>
         </a>
     </td>
     <td align="center">
@@ -471,7 +471,7 @@ docker compose up -d     # 启动
         <a href="https://github.com/gdouyang">
             <img src="https://avatars.githubusercontent.com/u/13996763?v=4" width="80;" alt="gdouyang"/>
             <br />
-            <sub><b>gdouyang</b></sub>
+            <sub><b>Gdouyang</b></sub>
         </a>
     </td>
     <td align="center">
