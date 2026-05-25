@@ -14,6 +14,7 @@ from app.api.endpoints import (
     health,
     knowledge,
     knowledge_open,
+    knowledge_transfer,
     mcp_providers,
     oidc,
     openapi_responses,
@@ -61,10 +62,12 @@ from app.api.endpoints.adapter import (
     teams,
     templates,
 )
+from app.api.endpoints.internal import attachments_router as internal_attachments_router
 from app.api.endpoints.internal import bots_router as internal_bots_router
 from app.api.endpoints.internal import (
     callback_router,
     chat_storage_router,
+    conversion_callback_router,
     object_storage_router,
     rag_content_router,
     services_router,
@@ -145,6 +148,14 @@ api_router.include_router(deep_research.router, prefix="/v1", tags=["deep-resear
 api_router.include_router(token_issuers.router, prefix="/v1", tags=["token-issuers"])
 api_router.include_router(
     knowledge.router, prefix="/knowledge-bases", tags=["knowledge"]
+)
+api_router.include_router(
+    knowledge_transfer.router, prefix="/knowledge-bases", tags=["knowledge-transfer"]
+)
+api_router.include_router(
+    knowledge_transfer.document_router,
+    prefix="/knowledge-documents",
+    tags=["knowledge-transfer"],
 )
 api_router.include_router(
     knowledge.document_router, prefix="/knowledge-documents", tags=["knowledge"]
@@ -255,4 +266,14 @@ api_router.include_router(
 )
 api_router.include_router(
     callback_router, prefix="/internal", tags=["internal-callback"]
+)
+api_router.include_router(
+    internal_attachments_router,
+    prefix="/internal",
+    tags=["internal-attachments"],
+)
+api_router.include_router(
+    conversion_callback_router,
+    prefix="/internal",
+    tags=["internal-conversion-callback"],
 )
